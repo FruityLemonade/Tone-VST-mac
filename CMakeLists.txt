@@ -17,6 +17,7 @@ if (XTONE_BUILD_PLUGIN)
     add_subdirectory(JUCE)
     juce_add_plugin(Xtone
         COMPANY_NAME             "XTONE Dev"      # TODO: decide before v0.2.0 (see HANDOFF 12.4)
+        BUNDLE_ID                com.terreursquad.xtone
         PLUGIN_MANUFACTURER_CODE Xtdv             # 4 chars, >= 1 upper case - NEVER change after release
         PLUGIN_CODE              Xtn1             # 4 chars, unique - NEVER change after release
         PRODUCT_NAME             "XTONE"
