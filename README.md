@@ -1,4 +1,4 @@
-# XTONE – Extratone-Retrigger-Sampler (VST3 für FL Studio)
+# XTONE – Extratone-Retrigger-Sampler
 
 XTONE lädt ein Sample (typisch eine Kick) und triggert es mit einer **eigenen, vom Projekttempo unabhängigen Uhr** immer wieder neu – bis weit über 1.000 BPM, wo die Kicks zu einem Ton verschmelzen. Die Retrigger-Rate wird zum **Grundton**, das Sample zur **Klangfarbe**.
 
@@ -15,13 +15,15 @@ Spezifikation: [`docs/HANDOFF.md`](docs/HANDOFF.md) · Entscheidungen: [`docs/DE
 
 ## Installation (macOS)
 
-Das Universal-Build enthält `XTONE.vst3` und `XTONE.app` für Intel-Macs und Apple Silicon. Das Build-Ziel ist macOS 11 oder neuer.
+Das Universal-Build enthält `XTONE.component` (Audio Unit), `XTONE.vst3` und `XTONE.app` für Intel-Macs und Apple Silicon. Das Build-Ziel ist macOS 11 oder neuer.
 
-1. ZIP entpacken oder XTONE wie unten beschrieben bauen.
-2. `XTONE.vst3` nach `~/Library/Audio/Plug-Ins/VST3/` kopieren. Den Ordner bei Bedarf anlegen.
-3. In FL Studio unter *Options → Manage plugins* auf *Find installed plugins* klicken und XTONE als Instrument hinzufügen.
+ZIP entpacken oder XTONE wie unten beschrieben bauen. Die Plug-in-Ordner bei Bedarf anlegen.
 
-`XTONE.app` lässt sich als Standalone-Version starten. Die Bundles sind ad hoc signiert und nicht von Apple notarisiert.
+- **Logic Pro:** `XTONE.component` nach `~/Library/Audio/Plug-Ins/Components/` kopieren und Logic Pro starten. Auf einer Software-Instrument-Spur im Instrument-Slot *AU Instruments → XTONE Dev → XTONE → Stereo* auswählen. Falls XTONE fehlt, im Plug-in-Manager erneut prüfen.
+- **FL Studio:** `XTONE.vst3` nach `~/Library/Audio/Plug-Ins/VST3/` kopieren. Unter *Options → Manage plugins* auf *Find installed plugins* klicken und XTONE als Instrument hinzufügen.
+- **Standalone:** `XTONE.app` direkt starten.
+
+Die Bundles sind ad hoc signiert und nicht von Apple notarisiert.
 
 ## Stand
 
@@ -73,7 +75,7 @@ cmake --build --preset macos-universal --parallel
 ctest --preset macos-universal
 ```
 
-Die Bundles liegen unter `build-macos-universal/Xtone_artefacts/Release/` in den Ordnern `VST3/` und `Standalone/`.
+Die Bundles liegen unter `build-macos-universal/Xtone_artefacts/Release/` in den Ordnern `AU/`, `VST3/` und `Standalone/`.
 
 ### DSP-Kern und Tests
 

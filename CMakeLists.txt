@@ -15,6 +15,10 @@ add_subdirectory(dsp)                 # pure C++20, no JUCE
 
 if (XTONE_BUILD_PLUGIN)
     add_subdirectory(JUCE)
+    set(xtone_formats VST3 Standalone)
+    if (CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+        list(APPEND xtone_formats AU)
+    endif()
     juce_add_plugin(Xtone
         COMPANY_NAME             "XTONE Dev"      # TODO: decide before v0.2.0 (see HANDOFF 12.4)
         BUNDLE_ID                com.terreursquad.xtone
@@ -22,7 +26,8 @@ if (XTONE_BUILD_PLUGIN)
         PLUGIN_CODE              Xtn1             # 4 chars, unique - NEVER change after release
         PRODUCT_NAME             "XTONE"
         VERSION                  ${PROJECT_VERSION}
-        FORMATS                  VST3 Standalone
+        FORMATS                  ${xtone_formats}
+        AU_MAIN_TYPE             kAudioUnitType_MusicDevice
         IS_SYNTH                 TRUE
         NEEDS_MIDI_INPUT         TRUE
         NEEDS_MIDI_OUTPUT        FALSE
@@ -31,10 +36,10 @@ if (XTONE_BUILD_PLUGIN)
         COPY_PLUGIN_AFTER_BUILD  FALSE
         VST3_CATEGORIES          Instrument Sampler)
     if (CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND NOT CMAKE_GENERATOR STREQUAL "Xcode")
-        # Sign both bundles after JUCE has generated all resources, including moduleinfo.json.
-        foreach (bundle_target IN ITEMS Xtone_VST3 Xtone_Standalone)
-            add_custom_command(TARGET ${bundle_target} POST_BUILD
-                COMMAND /usr/bin/codesign --force --sign - "$<TARGET_BUNDLE_DIR:${bundle_target}>"
+        # Sign the finished bundles after JUCE generates resources such as the VST3 manifest.
+        foreach (format IN LISTS xtone_formats)
+            add_custom_command(TARGET Xtone_${format} POST_BUILD
+                COMMAND /usr/bin/codesign --force --sign - "$<TARGET_BUNDLE_DIR:Xtone_${format}>"
                 VERBATIM)
         endforeach()
     endif()

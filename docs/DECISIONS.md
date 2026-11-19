@@ -22,3 +22,4 @@ Kurzprotokoll eigener Entscheidungen (siehe HANDOFF §13). Neueste unten.
 | D16 | 19.11.2026 | macOS-Fork | `Tone-VST-mac` baut VST3 und Standalone über das CMake-Preset `macos-universal` für arm64 und x86_64 mit Deployment-Ziel macOS 11. |
 | D17 | 19.11.2026 | macOS-Bundles | `com.terreursquad.xtone` ist die Bundle-ID. Die VST3- und Standalone-Bundles werden nach dem Erzeugen ihrer Ressourcen ad hoc signiert. |
 | D18 | 20.11.2026 | Wellenform & Transienten | Zoom und Scrollen beziehen sich auf Quell-Frames. Bei starkem Zoom zeigt der Editor einzelne Samples. Die Hintergrundanalyse ersetzt Marker bei einem Treffer. Wenn sich Sample oder Marker während der Analyse ändern, wird das Ergebnis verworfen. |
+| D19 | 20.11.2026 | Audio Unit | Der macOS-Build enthält ein AUv2-Instrument (`aumu`, `Xtn1`, `Xtdv`) für Logic Pro. macOS-CI validiert es mit Apples `auval`. |
