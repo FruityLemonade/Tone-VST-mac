@@ -62,7 +62,10 @@ namespace
 
     SampleAsset::Ptr decode (std::unique_ptr<InputStream> in, String& error)
     {
-        std::unique_ptr<AudioFormatReader> reader (loader::formats().createReaderFor (std::move (in)));
+        // Local manager: a static one would be destroyed at DLL unload, which is unsafe on Windows.
+        AudioFormatManager fm;
+        fm.registerBasicFormats();
+        std::unique_ptr<AudioFormatReader> reader (fm.createReaderFor (std::move (in)));
         if (reader == nullptr)
         {
             error = "Format nicht unterstuetzt";
@@ -149,14 +152,6 @@ ValueTree SampleAsset::getSlicesTree() const
 
 namespace loader
 {
-    AudioFormatManager& formats()
-    {
-        static AudioFormatManager fm;
-        static std::once_flag once;
-        std::call_once (once, [] { fm.registerBasicFormats(); });
-        return fm;
-    }
-
     SampleAsset::Ptr makeDefault()
     {
         const auto kick = xt::makeDefaultKick (48000.0);

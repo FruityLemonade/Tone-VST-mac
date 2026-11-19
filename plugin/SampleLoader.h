@@ -54,8 +54,6 @@ private:
 /// Decoding / building helpers (call on a background or message thread, never on the audio thread).
 namespace loader
 {
-    juce::AudioFormatManager& formats();
-
     /// Synthetic default kick.
     SampleAsset::Ptr makeDefault();
 
