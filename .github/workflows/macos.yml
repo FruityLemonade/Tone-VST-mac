@@ -17,6 +17,8 @@ jobs:
         with:
           submodules: true
       - name: Configure
+        env:
+          CMAKE_BUILD_PARALLEL_LEVEL: '3'
         run: cmake --preset macos-universal
       - name: Build
         run: cmake --build --preset macos-universal --parallel 3

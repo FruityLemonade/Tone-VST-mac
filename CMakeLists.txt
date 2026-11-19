@@ -29,6 +29,14 @@ if (XTONE_BUILD_PLUGIN)
         EDITOR_WANTS_KEYBOARD_FOCUS FALSE
         COPY_PLUGIN_AFTER_BUILD  FALSE
         VST3_CATEGORIES          Instrument Sampler)
+    if (CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND NOT CMAKE_GENERATOR STREQUAL "Xcode")
+        # Sign both bundles after JUCE has generated all resources, including moduleinfo.json.
+        foreach (bundle_target IN ITEMS Xtone_VST3 Xtone_Standalone)
+            add_custom_command(TARGET ${bundle_target} POST_BUILD
+                COMMAND /usr/bin/codesign --force --sign - "$<TARGET_BUNDLE_DIR:${bundle_target}>"
+                VERBATIM)
+        endforeach()
+    endif()
     target_sources(Xtone PRIVATE
         plugin/PluginProcessor.cpp
         plugin/Parameters.cpp
