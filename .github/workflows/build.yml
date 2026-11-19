@@ -36,15 +36,15 @@ jobs:
         run: |
           Invoke-WebRequest https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_Windows.zip -OutFile pluginval.zip
           Expand-Archive pluginval.zip -DestinationPath pluginval
-          $vst = "build/Xtone_artefacts/Release/VST3/XTONE.vst3"
-          ./pluginval/pluginval.exe --strictness-level 5 --skip-gui-tests --validate $vst
-          $code = $LASTEXITCODE
-          if ($code -ne 0) {
-            Write-Host "pluginval exit code $code - re-running in-process for diagnostics"
-            ./pluginval/pluginval.exe --strictness-level 5 --skip-gui-tests --validate-in-process --verbose --validate $vst
-            Write-Host "in-process exit code $LASTEXITCODE"
-            exit 1
-          }
+          $vst = (Resolve-Path "build/Xtone_artefacts/Release/VST3/XTONE.vst3").Path
+          # pluginval.exe is a GUI-subsystem app: a direct call neither waits nor sets $LASTEXITCODE.
+          $p = Start-Process -FilePath "./pluginval/pluginval.exe" `
+                 -ArgumentList "--strictness-level", "5", "--skip-gui-tests", "--validate", "`"$vst`"" `
+                 -Wait -PassThru -NoNewWindow -RedirectStandardOutput pluginval.log
+          Get-Content pluginval.log
+          $log = Get-Content pluginval.log -Raw
+          Write-Host "pluginval exit code: $($p.ExitCode)"
+          if ($p.ExitCode -ne 0 -or $log -notmatch "SUCCESS" -or $log -match "FAILED") { exit 1 }
       - name: Package
         shell: pwsh
         run: |
