@@ -19,9 +19,9 @@ Das Universal-Build enthält `XTONE.component` (Audio Unit), `XTONE.vst3` und `X
 
 ZIP entpacken oder XTONE wie unten beschrieben bauen. Die Plug-in-Ordner bei Bedarf anlegen.
 
-- **Logic Pro:** `XTONE.component` nach `~/Library/Audio/Plug-Ins/Components/` kopieren und Logic Pro starten. Auf einer Software-Instrument-Spur im Instrument-Slot *AU Instruments → XTONE Dev → XTONE → Stereo* auswählen. Falls XTONE fehlt, im Plug-in-Manager erneut prüfen.
-- **FL Studio:** `XTONE.vst3` nach `~/Library/Audio/Plug-Ins/VST3/` kopieren. Unter *Options → Manage plugins* auf *Find installed plugins* klicken und XTONE als Instrument hinzufügen.
-- **Standalone:** `XTONE.app` direkt starten.
+- Für **Logic Pro** `XTONE.component` nach `~/Library/Audio/Plug-Ins/Components/` kopieren und Logic Pro starten. Auf einer Software-Instrument-Spur im Instrument-Slot *AU Instruments → XTONE Dev → XTONE → Stereo* auswählen. Falls XTONE fehlt, im Plug-in-Manager erneut prüfen.
+- Für **FL Studio** `XTONE.vst3` nach `~/Library/Audio/Plug-Ins/VST3/` kopieren. Unter *Options → Manage plugins* auf *Find installed plugins* klicken und XTONE als Instrument hinzufügen.
+- Für den **Standalone-Betrieb** `XTONE.app` direkt starten.
 
 Die Bundles sind ad hoc signiert und nicht von Apple notarisiert.
 
