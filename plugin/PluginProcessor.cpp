@@ -263,7 +263,9 @@ int XtoneProcessor::getNumPrograms() { return (int) xtp::factoryPresets().size()
 void XtoneProcessor::setCurrentProgram (int index)
 {
     const auto& p = xtp::factoryPresets();
-    if (index < 0 || index >= (int) p.size()) return;
+    // Hosts re-send the current program after restoring a project; that must not
+    // overwrite the restored parameters.
+    if (index < 0 || index >= (int) p.size() || index == currentProgram) return;
     currentProgram = index;
     xtp::applyPreset (apvts, p[(size_t) index]);
 }
