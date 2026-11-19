@@ -1,0 +1,42 @@
+name: macOS Universal
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  macos:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+      - name: Configure
+        run: cmake --preset macos-universal
+      - name: Build
+        run: cmake --build --preset macos-universal --parallel 3
+      - name: DSP tests
+        run: ctest --preset macos-universal
+      - name: Check universal bundles
+        working-directory: build-macos-universal/Xtone_artefacts/Release
+        run: |
+          for bundle in VST3/XTONE.vst3 Standalone/XTONE.app; do
+            lipo -verify_arch arm64 x86_64 "$bundle/Contents/MacOS/XTONE"
+            codesign --verify --strict --all-architectures "$bundle"
+          done
+      - name: Validate VST3
+        env:
+          PLUGINVAL_VERSION: v1.0.4
+        run: |
+          curl --fail --location --retry 3 \
+            "https://github.com/Tracktion/pluginval/releases/download/$PLUGINVAL_VERSION/pluginval_macOS.zip" \
+            --output "$RUNNER_TEMP/pluginval.zip"
+          ditto -x -k "$RUNNER_TEMP/pluginval.zip" "$RUNNER_TEMP/pluginval"
+          "$RUNNER_TEMP/pluginval/pluginval.app/Contents/MacOS/pluginval" \
+            --strictness-level 5 --skip-gui-tests --validate-in-process \
+            "$PWD/build-macos-universal/Xtone_artefacts/Release/VST3/XTONE.vst3"

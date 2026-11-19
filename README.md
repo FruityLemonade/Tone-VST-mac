@@ -13,6 +13,16 @@ Spezifikation: [`docs/HANDOFF.md`](docs/HANDOFF.md) · Entscheidungen: [`docs/DE
 
 `XTONE.exe` ist die Standalone-Version zum schnellen Testen ohne FL (MIDI-Keyboard oder die Bildschirm-Tastatur in den Einstellungen).
 
+## Installation (macOS)
+
+Das Universal-Build enthält `XTONE.vst3` und `XTONE.app` für Intel-Macs und Apple Silicon. Das Build-Ziel ist macOS 11 oder neuer.
+
+1. ZIP entpacken oder XTONE wie unten beschrieben bauen.
+2. `XTONE.vst3` nach `~/Library/Audio/Plug-Ins/VST3/` kopieren. Den Ordner bei Bedarf anlegen.
+3. In FL Studio unter *Options → Manage plugins* auf *Find installed plugins* klicken und XTONE als Instrument hinzufügen.
+
+`XTONE.app` lässt sich als Standalone-Version starten. Die Bundles sind ad hoc signiert und nicht von Apple notarisiert.
+
 ## Stand
 
 | Meilenstein | Inhalt | Status |
@@ -41,11 +51,29 @@ Parameter späterer Meilensteine sind schon sichtbar (stabile IDs), haben aber n
 
 ## Selbst bauen
 
+### Windows
+
 ```
 git clone --recursive https://github.com/TerreurSquad/tone-vst
 cmake -B build -A x64
 cmake --build build --config Release
 ```
+
+### macOS (Universal)
+
+Benötigt CMake 3.25 oder neuer und die Xcode Command Line Tools (`xcode-select --install`).
+
+```sh
+git clone --recurse-submodules https://github.com/FruityLemonade/Tone-VST-mac.git
+cd Tone-VST-mac
+cmake --preset macos-universal
+cmake --build --preset macos-universal --parallel
+ctest --preset macos-universal
+```
+
+Die Bundles liegen unter `build-macos-universal/Xtone_artefacts/Release/` in den Ordnern `VST3/` und `Standalone/`.
+
+### DSP-Kern und Tests
 
 Nur DSP-Kern + Tests (auch unter Linux, ohne JUCE):
 

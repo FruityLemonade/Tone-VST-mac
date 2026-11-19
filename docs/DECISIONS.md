@@ -19,3 +19,4 @@ Kurzprotokoll eigener Entscheidungen (siehe HANDOFF §13). Neueste unten.
 | D13 | 19.11.2026 | Marker-Editing | Einfaches Marker-Editing (Doppelklick/Ziehen/Rechtsklick, [Gleichmäßig], [Marker löschen]) ist schon in M1 enthalten; Zoom/Scroll und Transienten folgen in M2. |
 | D14 | 19.11.2026 | Sample-Länge | Dekodierte Samples werden auf 10 Minuten (bei 48 kHz) begrenzt, um Speicherprobleme zu vermeiden. |
 | D15 | 19.11.2026 | CI/pluginval | `pluginval.exe` ist eine GUI-Anwendung: Ein direkter Aufruf aus PowerShell wartet nicht und setzt `$LASTEXITCODE` nicht (der Schritt aus HANDOFF §12.2 schlug deshalb immer fehl). Jetzt `Start-Process -Wait -PassThru` + Prüfung auf `SUCCESS`/`FAILED` im Log. |
+| D16 | 19.11.2026 | macOS-Fork | `Tone-VST-mac` baut VST3 und Standalone über das CMake-Preset `macos-universal` für arm64 und x86_64 mit Deployment-Ziel macOS 11. |
