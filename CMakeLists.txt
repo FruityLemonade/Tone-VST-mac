@@ -1,0 +1,63 @@
+cmake_minimum_required(VERSION 3.25)
+project(XTONE VERSION 0.1.0 LANGUAGES C CXX)
+
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+if (NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+    set(CMAKE_BUILD_TYPE Release)
+endif()
+
+option(XTONE_BUILD_PLUGIN "Plugin bauen (braucht JUCE-Submodule)" ON)
+option(XTONE_BUILD_TESTS  "DSP-Tests bauen" ON)
+
+add_subdirectory(dsp)                 # pure C++20, no JUCE
+
+if (XTONE_BUILD_PLUGIN)
+    add_subdirectory(JUCE)
+    juce_add_plugin(Xtone
+        COMPANY_NAME             "XTONE Dev"      # TODO: decide before v0.2.0 (see HANDOFF 12.4)
+        PLUGIN_MANUFACTURER_CODE Xtdv             # 4 chars, >= 1 upper case - NEVER change after release
+        PLUGIN_CODE              Xtn1             # 4 chars, unique - NEVER change after release
+        PRODUCT_NAME             "XTONE"
+        VERSION                  ${PROJECT_VERSION}
+        FORMATS                  VST3 Standalone
+        IS_SYNTH                 TRUE
+        NEEDS_MIDI_INPUT         TRUE
+        NEEDS_MIDI_OUTPUT        FALSE
+        IS_MIDI_EFFECT           FALSE
+        EDITOR_WANTS_KEYBOARD_FOCUS FALSE
+        COPY_PLUGIN_AFTER_BUILD  FALSE
+        VST3_CATEGORIES          Instrument Sampler)
+    target_sources(Xtone PRIVATE
+        plugin/PluginProcessor.cpp
+        plugin/Parameters.cpp
+        plugin/SampleLoader.cpp
+        plugin/Presets.cpp
+        plugin/gui/PluginEditor.cpp
+        plugin/gui/HeaderBar.cpp
+        plugin/gui/WaveformView.cpp
+        plugin/gui/ParamPanel.cpp)
+    target_include_directories(Xtone PRIVATE plugin)
+    if (MSVC)
+        target_compile_options(Xtone PRIVATE /utf-8)
+    endif()
+    target_compile_definitions(Xtone PUBLIC
+        JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE_VST2=0
+        JUCE_DISPLAY_SPLASH_SCREEN=0
+        JUCE_USE_MP3AUDIOFORMAT=1 JUCE_USE_FLAC=1 JUCE_USE_OGGVORBIS=1)
+    target_link_libraries(Xtone
+        PRIVATE xtone_dsp juce::juce_audio_utils juce::juce_dsp
+        PUBLIC  juce::juce_recommended_config_flags juce::juce_recommended_lto_flags
+                juce::juce_recommended_warning_flags)
+endif()
+
+if (XTONE_BUILD_TESTS)
+    include(FetchContent)
+    FetchContent_Declare(Catch2 GIT_REPOSITORY https://github.com/catchorg/Catch2.git
+                                GIT_TAG v3.8.1 GIT_SHALLOW TRUE)
+    FetchContent_MakeAvailable(Catch2)
+    list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
+    enable_testing()
+    add_subdirectory(tests)
+endif()

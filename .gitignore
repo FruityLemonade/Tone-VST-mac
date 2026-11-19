@@ -1,0 +1,9 @@
+build*/
+cmake-build-*/
+.vs/
+.vscode/
+.idea/
+*.user
+dist/
+XTONE-win64.zip
+.DS_Store
