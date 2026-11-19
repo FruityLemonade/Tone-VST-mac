@@ -29,7 +29,7 @@ Das Universal-Build enthält `XTONE.vst3` und `XTONE.app` für Intel-Macs und Ap
 |---|---|---|
 | M0 Gerüst | Repo, CMake, CI, Default-Kick, generische Parameter-UI | ✔ |
 | M1 Kern-Engine | Rate-Quellen BPM/Hz/Host×, Teiler, Sub-Sample-Clock, Cut + Declick, Gate, Sample-Pitch, Sample laden (Dialog + Drag & Drop), State mit Einbettung, Note-ADSR, Pitch-Modus Relativ/Absolut, Glide, Pitchbend, Live-Anzeige | ✔ (wartet auf Abnahme) |
-| M2 Chop | Slices, Marker-Editor, Transienten, Slice-Modus, Scan/Länge/Reverse … | teilweise (Slices, Marker-Editing, Scan/Länge/Reverse, Overlap, Pitch-Env schon drin) |
+| M2 Chop | Slices, Marker-Editor, Transienten, Slice-Modus, Scan/Länge/Reverse … | Slices, Marker-Editor mit Zoom, Transienten, Scan/Länge/Reverse, Overlap und Pitch-Env verfügbar |
 | M3 Charakter | Oversampling, Drive/Clip/DC, Mono, A/B, Jitter, Tune-Snap | teilweise (OS, Drive/Clip/DC, Mono, Jitter, Tune-Snap drin; A/B fehlt) |
 | M4 Bewegung | Rampe, LFO 1/2, Unison | Unison drin; Rampe/LFO fehlen |
 | M5 Sequencer | Step-Sequencer + Raster | offen |
@@ -45,6 +45,8 @@ Parameter späterer Meilensteine sind schon sichtbar (stabile IDs), haben aber n
 - **MIDI-Modus Slice**: Die Note wählt den Slice (ab `Slice-Startnote`), die Rate kommt vom Rate-Tab.
 - **Sample**: [Laden…] oder per Drag & Drop (auch aus dem FL-Browser). Dateien bis 32 MB werden ins Projekt eingebettet.
 - **Slices**: Doppelklick in die Wellenform setzt einen Marker, Ziehen verschiebt, Rechtsklick löscht; [Gleichmäßig] teilt in N gleiche Slices.
+- **Wellenform**: Mausrad zoomt am Zeiger. Mit Shift + Mausrad, einer horizontalen Trackpad-Geste oder der Scrollleiste verschiebst du den Ausschnitt. Die Tasten [−] und [+] zoomen mittig. [Alles] zeigt das ganze Sample.
+- **Transienten**: Empfindlichkeit einstellen und [Transienten] klicken. Die Analyse läuft im Hintergrund über das ganze Sample. Gefundene Transienten ersetzen die bisherigen Marker und lassen sich danach manuell bearbeiten. Bei keinem Treffer bleiben die Marker erhalten.
 - **Live-Anzeige**: Rate in Hz, BPM-Äquivalent, Ton (wissenschaftlich und FL-Notation), aktueller Slice.
 
 > **Notennamen:** FL Studio nennt MIDI-Note 60 „C5“, die wissenschaftliche Notation „C4“. XTONE zeigt beides an.

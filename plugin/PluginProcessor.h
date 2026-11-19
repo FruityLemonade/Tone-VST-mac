@@ -6,6 +6,9 @@
 #include "Parameters.h"
 #include "SampleLoader.h"
 
+#include <functional>
+#include <optional>
+
 class XtoneProcessor : public juce::AudioProcessor, private juce::Timer
 {
 public:
@@ -47,8 +50,12 @@ public:
     /// Asynchronous load (decodes on a background thread).
     void loadSampleFile (const juce::File& f);
     void normalizeSample();
-    /// Replace the slice markers (creates a new asset).
-    void setMarkers (std::vector<int64_t> markers);
+    /// Replace markers if the asset being edited is still current.
+    bool setMarkers (const xtp::SampleAsset& asset, std::vector<int64_t> markers);
+    /// Analyse a snapshot off the message thread. Completion reports the marker count,
+    /// or nullopt if the result was superseded by another edit or sample load.
+    void detectTransients (xtp::SampleAsset::Ptr asset, double sensitivity,
+                           std::function<void (std::optional<int>)> finished);
 
     xtp::SampleAsset::Ptr getCurrentAsset() const;
     juce::String getStatusMessage() const;
@@ -60,7 +67,7 @@ public:
 
 private:
     void timerCallback() override;
-    void publish (xtp::SampleAsset::Ptr asset); // message / loader thread
+    bool publish (xtp::SampleAsset::Ptr asset, const xtp::SampleAsset* expected = nullptr);
     void swapPendingAsset() noexcept;            // audio thread
     void setOversampling (int index) noexcept;   // audio thread / prepare
     juce::ValueTree buildState();

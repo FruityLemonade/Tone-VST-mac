@@ -1,5 +1,6 @@
 #include "PluginProcessor.h"
 
+#include "OnsetDetector.h"
 #include "Presets.h"
 #include "gui/PluginEditor.h"
 
@@ -183,17 +184,20 @@ void XtoneProcessor::processBlock (AudioBuffer<float>& buffer, MidiBuffer& midi)
 
 // ------------------------------------------------------------------ assets
 
-void XtoneProcessor::publish (xtp::SampleAsset::Ptr asset)
+bool XtoneProcessor::publish (xtp::SampleAsset::Ptr asset, const xtp::SampleAsset* expected)
 {
-    if (asset == nullptr) return;
+    if (asset == nullptr) return false;
+    xtp::SampleAsset* displaced = nullptr;
     {
         const ScopedLock sl (guiLock);
+        if (expected != nullptr && guiAsset.get() != expected) return false;
         guiAsset = asset;
+        asset->incReferenceCount();
+        displaced = pending.exchange (asset.get(), std::memory_order_acq_rel);
+        ++assetVersion;
     }
-    asset->incReferenceCount();
-    if (auto* old = pending.exchange (asset.get(), std::memory_order_acq_rel))
-        old->decReferenceCount(); // never reached the audio thread
-    ++assetVersion;
+    if (displaced != nullptr) displaced->decReferenceCount(); // never reached the audio thread
+    return true;
 }
 
 void XtoneProcessor::timerCallback()
@@ -234,14 +238,30 @@ void XtoneProcessor::normalizeSample()
 {
     auto a = getCurrentAsset();
     if (a == nullptr || a->normalized) return;
-    publish (xtp::loader::normalizedCopy (*a));
+    publish (xtp::loader::normalizedCopy (*a), a.get());
 }
 
-void XtoneProcessor::setMarkers (std::vector<int64_t> markers)
+bool XtoneProcessor::setMarkers (const xtp::SampleAsset& asset, std::vector<int64_t> markers)
 {
-    auto a = getCurrentAsset();
-    if (a == nullptr) return;
-    publish (a->withMarkers (std::move (markers)));
+    return publish (asset.withMarkers (std::move (markers)), &asset);
+}
+
+void XtoneProcessor::detectTransients (xtp::SampleAsset::Ptr asset, double sensitivity,
+                                       std::function<void (std::optional<int>)> finished)
+{
+    std::weak_ptr<int> token = lifetimeToken;
+    loaderPool.addJob ([this, asset, sensitivity, token, finished]
+    {
+        const auto sample = asset->view().sample;
+        auto markers = xt::detectOnsets ({ sample.mono, (size_t) sample.frames }, sample.sampleRate, sensitivity);
+        MessageManager::callAsync ([this, asset, token, onsets = std::move (markers), finished]() mutable
+        {
+            if (token.expired()) return;
+            const auto count = (int) onsets.size();
+            const bool current = count > 0 ? setMarkers (*asset, std::move (onsets)) : getCurrentAsset() == asset;
+            finished (current ? std::optional<int> { count } : std::nullopt);
+        });
+    });
 }
 
 xtp::SampleAsset::Ptr XtoneProcessor::getCurrentAsset() const
