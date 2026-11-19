@@ -37,8 +37,19 @@ jobs:
           components_dir="$HOME/Library/Audio/Plug-Ins/Components"
           mkdir -p "$components_dir"
           ditto build-macos-universal/Xtone_artefacts/Release/AU/XTONE.component "$components_dir/XTONE.component"
-          auval -strict -v aumu Xtn1 Xtdv | tee "$RUNNER_TEMP/xtone-auval.log"
-          grep -Fxq 'AU VALIDATION SUCCEEDED.' "$RUNNER_TEMP/xtone-auval.log"
+          # Refresh the registrar on the disposable runner after installing the AU.
+          killall -9 AudioComponentRegistrar 2>/dev/null || true
+          log="$RUNNER_TEMP/xtone-auval.log"
+          for attempt in 1 2 3; do
+            if auval -strict -v aumu Xtn1 Xtdv | tee "$log"; then
+              grep -Fq 'AU VALIDATION SUCCEEDED.' "$log"
+              exit 0
+            fi
+            if [[ "$attempt" == 3 ]] || ! grep -Fq "didn't find the component" "$log"; then
+              exit 1
+            fi
+            sleep 2
+          done
       - name: Validate VST3
         env:
           PLUGINVAL_VERSION: v1.0.4
