@@ -1,10 +1,14 @@
 #include "WaveformView.h"
 
+#include "FaceplateArtwork.h"
+
 #include "HammerLookAndFeel.h"
 
 #include "../PluginProcessor.h"
 
+#include <algorithm>
 #include <array>
+#include <utility>
 
 using namespace juce;
 
@@ -164,6 +168,7 @@ void WaveformView::updateAsset()
     const auto previousAudio = asset != nullptr ? asset->audio : nullptr;
     asset = std::move (current);
     dragIndex = -1;
+    selectOnRelease = false;
     if (asset == nullptr || asset->audio != previousAudio)
     {
         detectionMessage.clear();
@@ -266,7 +271,7 @@ void WaveformView::paintSignal (Graphics& g, Rectangle<int> w) const
     const int frames = audio.buffer.getNumSamples();
     const double framesPerPixel = visibleLength / w.getWidth();
     const float midY = (float) w.getCentreY(), halfH = (float) w.getHeight() * 0.48f;
-    g.setColour (hammer::yellow);
+    g.setColour (hammer::accentFor (*this));
 
     if (framesPerPixel < 1.0)
     {
@@ -329,7 +334,9 @@ void WaveformView::paintTimeline (Graphics& g, Rectangle<int> w) const
 
 void WaveformView::paint (Graphics& g)
 {
-    hammer::drawRecess (g, getLocalBounds().toFloat());
+    const auto skin = hammer::skinFor (*this);
+    const auto accent = hammer::accentColour (skin);
+    hammer::artwork::drawWaveformPanel (g, getLocalBounds(), skin);
     const auto w = waveArea();
     g.setColour (Colour (0xff101210));
     g.fillRoundedRectangle (w.toFloat(), 5.0f);
@@ -349,17 +356,27 @@ void WaveformView::paint (Graphics& g)
 
     const auto& markers = dragIndex >= 0 ? dragSlices.getMarkers() : asset->slices.getMarkers();
     const int numSlices = (int) markers.size() + 1;
-    const int currentSlice = jlimit (0, numSlices - 1, plotState.slice);
+    const int selected = plotState.selectedSlice % numSlices;
+    const int playing = plotState.playingSlice;
+    const bool isPlaying = isPositiveAndBelow (playing, numSlices);
+    const int scanSlice = isPlaying ? playing : selected;
     const auto frames = (double) asset->audio->frames();
-    const double sliceStart = currentSlice == 0 ? 0.0 : (double) markers[(size_t) currentSlice - 1];
-    const double sliceEnd = currentSlice == numSlices - 1 ? frames : (double) markers[(size_t) currentSlice];
+    const auto startOf = [&] (int i) { return i == 0 ? 0.0 : (double) markers[(size_t) i - 1]; };
+    const auto endOf = [&] (int i) { return i == numSlices - 1 ? frames : (double) markers[(size_t) i]; };
+    const double sliceStart = startOf (scanSlice), sliceEnd = endOf (scanSlice);
     const auto xInPlot = [this, w] (double frame) { return jlimit ((float) w.getX(), (float) w.getRight(), frameToX (frame)); };
 
     if (numSlices > 1)
     {
-        const float x0 = xInPlot (sliceStart), x1 = xInPlot (sliceEnd);
-        g.setColour (hammer::yellow.withAlpha (0.15f));
+        const float x0 = xInPlot (startOf (selected)), x1 = xInPlot (endOf (selected));
+        g.setColour (accent.withAlpha (0.15f));
         g.fillRect (x0, (float) w.getY(), x1 - x0, (float) w.getHeight());
+        if (isPlaying)
+        {
+            const float activeLeft = xInPlot (startOf (playing)), activeRight = xInPlot (endOf (playing));
+            g.setColour (hammer::text.withAlpha (0.85f));
+            g.fillRect (activeLeft, (float) w.getY() + 1.0f, activeRight - activeLeft, 2.0f);
+        }
     }
 
     g.setColour (hammer::edge.withAlpha (0.5f));
@@ -370,7 +387,7 @@ void WaveformView::paint (Graphics& g)
     const double length = plotState.length * 0.01 * (sliceEnd - sliceStart);
     const double windowStart = sliceStart + scan * (sliceEnd - sliceStart - length);
     const float sx0 = xInPlot (windowStart), sx1 = xInPlot (windowStart + length);
-    g.setColour (hammer::yellow.withAlpha (0.35f));
+    g.setColour (accent.withAlpha (0.35f));
     g.fillRect (sx0, (float) w.getBottom() - 4.0f, sx1 - sx0, 3.0f);
 
     paintSignal (g, w);
@@ -385,7 +402,7 @@ void WaveformView::paint (Graphics& g)
         const auto handle = Rectangle<float> (12.0f, 15.0f).withCentre ({ x, (float) w.getBottom() - 10.0f });
         g.setColour (hammer::text.withAlpha (0.72f));
         g.drawDashedLine ({ x, (float) w.getY(), x, handle.getY() }, dashes, 2, 1.0f);
-        g.setColour ((int) i == dragIndex ? hammer::yellow : hammer::muted);
+        g.setColour ((int) i == dragIndex ? accent : hammer::muted);
         g.fillRoundedRectangle (handle, 2.5f);
         g.setColour (hammer::ink);
         for (int offset : { -2, 0, 2 })
@@ -400,31 +417,52 @@ void WaveformView::paint (Graphics& g)
         g.drawLine (x, (float) w.getY(), x, (float) w.getBottom(), 1.0f);
     }
 
-    const auto sliceReadout = w.reduced (8).removeFromTop (19).removeFromRight (115);
+    String sliceText = "SLICE " + String (selected + 1) + "/" + String (numSlices);
+    const bool showPlaying = isPlaying && playing != selected;
+    if (showPlaying) sliceText << "  /  PLAY " << playing + 1;
+    const auto sliceReadout = w.reduced (8).removeFromTop (19).removeFromRight (showPlaying ? 190 : 115);
     g.setColour (hammer::recess.withAlpha (0.88f));
     g.fillRoundedRectangle (sliceReadout.toFloat(), 3.0f);
-    g.setColour (hammer::yellow);
+    g.setColour (accent);
     g.setFont (hammer::mono (12.0f, Font::bold));
-    g.drawText ("SLICE " + String (currentSlice + 1) + "/" + String (numSlices), sliceReadout, Justification::centred);
+    g.drawText (sliceText, sliceReadout, Justification::centred);
+}
+
+int WaveformView::markerAt (float x) const
+{
+    const double frame = xToFrame (x);
+    const double tolerance = 6.0 * visibleLength / waveArea().getWidth();
+    const int index = asset->slices.findMarker (std::llround (frame), (int64_t) std::ceil (tolerance));
+    if (index < 0) return -1;
+    const auto marker = (double) asset->slices.getMarkers()[(size_t) index];
+    return marker >= visibleStart && marker < visibleStart + visibleLength && std::abs (marker - frame) <= tolerance ? index : -1;
+}
+
+void WaveformView::mouseMove (const MouseEvent& e)
+{
+    if (visibleLength <= 0.0 || ! waveArea().contains (e.getPosition()) || asset->slices.getMarkers().empty())
+    {
+        setMouseCursor (MouseCursor::NormalCursor);
+        return;
+    }
+    setMouseCursor (markerAt (e.position.x) >= 0 ? MouseCursor::LeftRightResizeCursor : MouseCursor::PointingHandCursor);
 }
 
 void WaveformView::mouseDown (const MouseEvent& e)
 {
     updateAsset();
+    selectOnRelease = false;
     if (visibleLength <= 0.0 || ! waveArea().contains (e.getPosition())) return;
-    const double frame = xToFrame (e.position.x);
-    const double tolerance = 6.0 * visibleLength / waveArea().getWidth();
-    const int index = asset->slices.findMarker (std::llround (frame), (int64_t) std::ceil (tolerance));
+    selectOnRelease = e.mods.isLeftButtonDown() && ! e.mods.isPopupMenu();
+    const int index = markerAt (e.position.x);
     if (index < 0) return;
-    const auto marker = (double) asset->slices.getMarkers()[(size_t) index];
-    if (marker < visibleStart || marker >= visibleStart + visibleLength || std::abs (marker - frame) > tolerance) return;
     if (e.mods.isPopupMenu())
     {
         auto slices = asset->slices;
         slices.remove (index);
         proc.setMarkers (*asset, slices.getMarkers());
     }
-    else if (e.mods.isLeftButtonDown())
+    else if (selectOnRelease)
     {
         dragIndex = index;
         dragSlices = asset->slices;
@@ -439,14 +477,37 @@ void WaveformView::mouseDrag (const MouseEvent& e)
     repaint();
 }
 
-void WaveformView::mouseUp (const MouseEvent&)
+void WaveformView::mouseUp (const MouseEvent& e)
 {
     updateAsset();
-    if (dragIndex < 0) return;
-    dragIndex = -1;
-    if (dragSlices.getMarkers() != asset->slices.getMarkers())
-        proc.setMarkers (*asset, dragSlices.getMarkers());
-    repaint();
+    const bool select = std::exchange (selectOnRelease, false) && waveArea().contains (e.getPosition())
+                     && ! e.mouseWasDraggedSinceMouseDown() && e.getNumberOfClicks() == 1;
+    if (const int marker = std::exchange (dragIndex, -1); marker >= 0)
+    {
+        if (dragSlices.getMarkers() != asset->slices.getMarkers())
+            proc.setMarkers (*asset, dragSlices.getMarkers());
+        else if (select)
+            selectSlice (marker + 1);
+        repaint();
+    }
+    else if (select)
+    {
+        const auto& markers = asset->slices.getMarkers();
+        const auto frame = (int64_t) std::floor (xToFrame (e.position.x));
+        selectSlice ((int) std::distance (markers.begin(), std::upper_bound (markers.begin(), markers.end(), frame)));
+    }
+}
+
+void WaveformView::selectSlice (int index)
+{
+    auto* parameter = proc.apvts.getParameter ("slice");
+    const float value = parameter->convertTo0to1 ((float) index);
+    if (approximatelyEqual (value, parameter->getValue())) return;
+    parameter->beginChangeGesture();
+    parameter->setValueNotifyingHost (value);
+    parameter->endChangeGesture();
+    plotState.selectedSlice = index;
+    repaint (waveArea());
 }
 
 void WaveformView::mouseDoubleClick (const MouseEvent& e)
@@ -482,8 +543,9 @@ void WaveformView::timerCallback()
     const auto raw = [this] (const char* id) { return proc.apvts.getRawParameterValue (id)->load(); };
     const auto active = telemetry.active.load();
     const PlotState next { active ? telemetry.playPos.load() : -1.0f, raw ("scan"), raw ("length"),
-                           active ? telemetry.slice.load() : (int) raw ("slice") };
-    if (next.slice != plotState.slice || ! approximatelyEqual (next.position, plotState.position)
+                           (int) raw ("slice"), active ? telemetry.slice.load() : -1 };
+    if (next.selectedSlice != plotState.selectedSlice || next.playingSlice != plotState.playingSlice
+        || ! approximatelyEqual (next.position, plotState.position)
         || ! approximatelyEqual (next.scan, plotState.scan) || ! approximatelyEqual (next.length, plotState.length))
     {
         plotState = next;

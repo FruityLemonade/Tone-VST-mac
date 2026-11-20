@@ -12,6 +12,7 @@ public:
     explicit RatePanel (XtoneProcessor&);
     void paint (juce::Graphics&) override;
     void resized() override;
+    void lookAndFeelChanged() override;
 
 private:
     void timerCallback() override;

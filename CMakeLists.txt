@@ -43,7 +43,20 @@ if (XTONE_BUILD_PLUGIN)
                 VERBATIM)
         endforeach()
     endif()
+    juce_add_binary_data(XtoneFaceplate
+        HEADER_NAME XtoneFaceplateData.h
+        NAMESPACE XtoneFaceplateData
+        SOURCES
+            plugin/assets/HammerDrillFaceplate.png
+            plugin/assets/MakitaFaceplate.jpg
+            plugin/assets/FestoolFaceplate.jpg
+            plugin/assets/HiltiFaceplate.jpg)
+    set_property(SOURCE plugin/gui/FaceplateArtwork.cpp APPEND PROPERTY
+        INCLUDE_DIRECTORIES "$<TARGET_PROPERTY:XtoneFaceplate,INTERFACE_INCLUDE_DIRECTORIES>")
     target_sources(Xtone PRIVATE
+        plugin/gui/FaceplateArtwork.cpp
+        plugin/gui/ModulationPanels.cpp
+        plugin/gui/ParameterControl.cpp
         plugin/PluginProcessor.cpp
         plugin/Parameters.cpp
         plugin/SampleLoader.cpp
@@ -63,7 +76,7 @@ if (XTONE_BUILD_PLUGIN)
         JUCE_DISPLAY_SPLASH_SCREEN=0
         JUCE_USE_MP3AUDIOFORMAT=1 JUCE_USE_FLAC=1 JUCE_USE_OGGVORBIS=1)
     target_link_libraries(Xtone
-        PRIVATE xtone_dsp juce::juce_audio_utils juce::juce_dsp
+        PRIVATE xtone_dsp "$<LINK_ONLY:XtoneFaceplate>" juce::juce_audio_utils juce::juce_dsp
         PUBLIC  juce::juce_recommended_config_flags juce::juce_recommended_lto_flags
                 juce::juce_recommended_warning_flags)
 endif()

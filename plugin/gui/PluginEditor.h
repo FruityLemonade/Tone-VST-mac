@@ -9,7 +9,7 @@
 
 class XtoneProcessor;
 
-class XtoneEditor : public juce::AudioProcessorEditor, public juce::FileDragAndDropTarget
+class XtoneEditor : public juce::AudioProcessorEditor, public juce::FileDragAndDropTarget, private juce::Timer
 {
 public:
     explicit XtoneEditor (XtoneProcessor&);
@@ -22,6 +22,9 @@ public:
     void filesDropped (const juce::StringArray&, int x, int y) override;
 
 private:
+    class AboutOverlay;
+    void timerCallback() override;
+    void updateSkin();
     void selectGroup (int);
 
     XtoneProcessor& proc;
@@ -30,7 +33,9 @@ private:
     WaveformView waveform;
     RatePanel rate;
     ParamPanel params;
+    juce::TextButton wordmark { "XTONE" };
     juce::OwnedArray<juce::TextButton> keys;
     juce::Rectangle<int> keyWell;
+    std::unique_ptr<AboutOverlay> about;
     juce::TooltipWindow tooltips { this };
 };

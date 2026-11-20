@@ -126,6 +126,8 @@ struct Telemetry
     std::atomic<int> slice { 0 };
     std::atomic<int> numSlices { 1 };
     std::atomic<int> step { -1 };
+    std::atomic<float> envelopeLevel { 0.0f };
+    std::atomic<Adsr::Stage> envelopeStage { Adsr::Stage::Idle };
     std::atomic<float> playPos { -1.0f }; // fraction of the sample, -1 = none
     std::atomic<bool> active { false };
     std::atomic<int> voices { 0 };

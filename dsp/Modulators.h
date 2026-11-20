@@ -54,6 +54,7 @@ public:
     bool isIdle() const noexcept { return stage == Stage::Idle; }
     bool isReleasing() const noexcept { return stage == Stage::Release; }
     double getLevel() const noexcept { return level; }
+    Stage getStage() const noexcept { return stage; }
 
     double process() noexcept
     {

@@ -1,11 +1,13 @@
 #pragma once
 #include <juce_audio_processors/juce_audio_processors.h>
 
-/// Scrollable pages for the parameter groups without a dedicated editor.
+class XtoneProcessor;
+
+/// Parameter pages for the parameter groups without a dedicated editor.
 class ParamPanel : public juce::Component
 {
 public:
-    ParamPanel (juce::AudioProcessor&, juce::AudioProcessorValueTreeState&);
+    explicit ParamPanel (XtoneProcessor&);
     void showGroup (int index);
     void paint (juce::Graphics&) override;
     void resized() override;

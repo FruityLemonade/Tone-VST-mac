@@ -9,6 +9,21 @@ using namespace juce;
 namespace
 {
 constexpr const char* kStateMagic = "XTN1";
+constexpr int kStateMagicSize = 4;
+
+ValueTree readSavedState (const void* data, size_t size)
+{
+    if (data == nullptr || size < (size_t) kStateMagicSize || std::memcmp (data, kStateMagic, kStateMagicSize) != 0)
+        return {};
+    return ValueTree::readFromData (static_cast<const char*> (data) + kStateMagicSize, size - kStateMagicSize);
+}
+
+void writeSavedState (MemoryBlock& dest, const ValueTree& state)
+{
+    MemoryOutputStream out (dest, false);
+    out.write (kStateMagic, kStateMagicSize);
+    state.writeToStream (out);
+}
 constexpr int kStateVersion = 1;
 } // namespace
 
@@ -314,9 +329,13 @@ ValueTree XtoneProcessor::buildState()
 
 void XtoneProcessor::getStateInformation (MemoryBlock& dest)
 {
-    MemoryOutputStream out (dest, false);
-    out.write (kStateMagic, 4);
-    buildState().writeToStream (out);
+    auto state = buildState();
+    const auto skin = getEditorSkin();
+    for (const auto& entry : xtp::editorSkins)
+        if (entry.skin == skin)
+            state.setProperty ("editorSkin", entry.id, nullptr);
+
+    writeSavedState (dest, state);
 }
 
 void XtoneProcessor::restoreState (const ValueTree& root)
@@ -347,22 +366,27 @@ void XtoneProcessor::restoreState (const ValueTree& root)
 
 void XtoneProcessor::setStateInformation (const void* data, int size)
 {
-    if (data == nullptr || size < 4 || std::memcmp (data, kStateMagic, 4) != 0) return;
-    restoreState (ValueTree::readFromData (static_cast<const char*> (data) + 4, (size_t) size - 4));
+    if (size < 0) return;
+    const auto state = readSavedState (data, (size_t) size);
+    if (! state.hasType ("XTONE_STATE")) return;
+    setEditorSkin (xtp::editorSkinFromId (state.getProperty ("editorSkin").toString()));
+    restoreState (state);
 }
 
 bool XtoneProcessor::saveStateToFile (const File& f)
 {
     MemoryBlock mb;
-    getStateInformation (mb);
+    writeSavedState (mb, buildState());
     return f.replaceWithData (mb.getData(), mb.getSize());
 }
 
 bool XtoneProcessor::loadStateFromFile (const File& f)
 {
     MemoryBlock mb;
-    if (! f.loadFileAsData (mb) || mb.getSize() < 4) return false;
-    setStateInformation (mb.getData(), (int) mb.getSize());
+    if (! f.loadFileAsData (mb)) return false;
+    const auto state = readSavedState (mb.getData(), mb.getSize());
+    if (! state.hasType ("XTONE_STATE")) return false;
+    restoreState (state);
     return true;
 }
 

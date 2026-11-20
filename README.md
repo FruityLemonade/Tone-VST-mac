@@ -41,14 +41,17 @@ The editor already exposes **A/B**, **Ramp**, **LFO 1**, **LFO 2**, and **Sequen
 
 ## Quick start
 
+- Click the **XTONE** wordmark to see the plugin version and choose **Hammer Drill**, **Makita**, **Festool**, or **Hilti**. XTONE saves the skin with each plugin instance in your DAW project. Preset changes keep the current skin.
 - In the **Rate** tab, choose **BPM** for **Plugin BPM** with a note **Division**, **Hz** for a direct frequency, or **Host ×** for the project tempo multiplied by the **Host Multiplier**. Turn the main dial to set the rate, or type a BPM or Hz value below it.
 - Play the **Root Note** to hear the selected rate. The default is MIDI note 60, shown as C4 in scientific pitch notation and C5 in FL Studio. In **Relative** key tracking, going up an octave doubles the rate. With **Key Tracking** set to **Absolute**, MIDI note 69 (A4) plays at 440 Hz by default, independent of the rate source.
 - Click **Load Sample…** or drag an audio file onto the editor. Dragging from the FL Studio browser is supported. Files up to 32 MB are embedded in the project. Larger files are stored by path.
-- Double-click the waveform to add a slice marker. Drag its handle to move it, or right-click it to remove it. Open **Slices** and choose **Slice Evenly** or **Clear All Markers** to edit the whole sample.
-- Set **MIDI Mode** to **Slice** to select a slice by MIDI note, starting at **Slice Base Note**. The **Rate** tab controls how fast it retriggers.
+- Click a slice in the waveform to select it. Double-click to add a marker, drag its handle to move it, or right-click it to remove it. Open **Slices** and choose **Slice Evenly** or **Clear All Markers** to edit the whole sample.
+- In **Slice** MIDI mode, notes select slices relative to your selection and **Slice Base Note**. The **Rate** tab controls how fast the slice retriggers.
 - Scroll over the waveform to zoom at the pointer. Pan with Shift and the mouse wheel, a horizontal trackpad gesture, or the scrollbar. Use **−** and **+** to zoom around the center, or click **Fit** to show the full sample.
 - Set **Sensitivity** and click **Transients** to analyze the entire sample in the background. Detected transients replace the existing slice markers, which you can then edit by hand. If the analysis finds no transients, it keeps the existing markers.
-- The rate display shows frequency in Hz, its BPM equivalent, and pitch in both scientific and FL Studio notation. The waveform highlights the current slice.
+- The rate display shows frequency in Hz, its BPM equivalent, and pitch in both scientific and FL Studio notation. The waveform shades the selected slice in the skin's accent color and marks the playing slice with a white line along its top edge.
+- In **Envelope**, drag A, D, or R horizontally to adjust the time, or S vertically to adjust the sustain level. Double-click a point to reset it. The graph highlights the active stage and shows the current envelope level while playing. Click a value below the graph to enter an exact setting.
+- **LFO 1** and **LFO 2** show a waveform preview. Drag the phase marker to set the start phase. Choose a timing mode to see its relevant control. The LFO modulation engine is pending.
 
 ## Building from source
 

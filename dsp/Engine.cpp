@@ -450,6 +450,8 @@ void Engine::process (float* outL, float* outR, int n, const MidiEvent* events, 
     telemetry.numSlices.store (std::max (1, source.numSlices), std::memory_order_relaxed);
     telemetry.active.store (running, std::memory_order_relaxed);
     telemetry.voices.store (activeVoiceCount(), std::memory_order_relaxed);
+    telemetry.envelopeLevel.store ((float) adsr.getLevel(), std::memory_order_relaxed);
+    telemetry.envelopeStage.store (adsr.getStage(), std::memory_order_relaxed);
     const double pos = running ? lanes[0].newestPosition() : -1.0;
     telemetry.playPos.store (pos >= 0.0 && source.sample.frames > 0 ? (float) (pos / (double) source.sample.frames) : -1.0f,
                              std::memory_order_relaxed);

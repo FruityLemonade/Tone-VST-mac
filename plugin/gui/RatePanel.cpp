@@ -1,5 +1,7 @@
 #include "RatePanel.h"
 
+#include "FaceplateArtwork.h"
+
 #include "HammerLookAndFeel.h"
 #include "../PluginProcessor.h"
 #include "RateMath.h"
@@ -94,7 +96,6 @@ RatePanel::RatePanel (XtoneProcessor& p) : proc (p)
 
     smoothing.setName (smoothingLabel.getText());
     smoothing.setTextBoxStyle (Slider::TextBoxRight, false, 68, 24);
-    smoothing.setColour (Slider::trackColourId, Colour (0xffa96d00));
     addAndMakeVisible (smoothing);
 
     divisionAttachment = std::make_unique<State::ComboBoxAttachment> (state, "division", division);
@@ -168,9 +169,18 @@ void RatePanel::resized()
 
 void RatePanel::paint (Graphics& g)
 {
-    const auto r = getLocalBounds().toFloat().reduced (0.5f);
-    hammer::drawMoulding (g, r, 14.0f, true);
-    hammer::drawRecess (g, display.toFloat());
+    const auto skin = hammer::skinFor (*this);
+    hammer::artwork::drawRatePanel (g, getLocalBounds(), skin);
+    hammer::artwork::drawRateDisplay (g, display, skin);
+}
+
+void RatePanel::lookAndFeelChanged()
+{
+    const auto colour = hammer::ratePanelText (hammer::skinFor (*this));
+    for (auto* label : { &rateTitle, &smoothingLabel, &divisionLabel, &modifierLabel })
+        label->setColour (Label::textColourId, colour);
+    phaseLock.setColour (ToggleButton::textColourId, colour);
+    phaseLock.setColour (ToggleButton::tickColourId, colour);
 }
 
 void RatePanel::timerCallback()

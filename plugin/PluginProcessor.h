@@ -3,6 +3,7 @@
 #include <juce_dsp/juce_dsp.h>
 
 #include "Engine.h"
+#include "EditorSkin.h"
 #include "Parameters.h"
 #include "SampleLoader.h"
 
@@ -64,6 +65,8 @@ public:
 
     bool saveStateToFile (const juce::File& f);
     bool loadStateFromFile (const juce::File& f);
+    xtp::EditorSkin getEditorSkin() const noexcept { return editorSkin.load (std::memory_order_relaxed); }
+    void setEditorSkin (xtp::EditorSkin skin) noexcept { editorSkin.store (skin, std::memory_order_relaxed); }
 
 private:
     void timerCallback() override;
@@ -99,6 +102,7 @@ private:
     std::shared_ptr<int> lifetimeToken = std::make_shared<int> (0);
     juce::ThreadPool loaderPool { 1 };
     int currentProgram { 0 };
+    std::atomic<xtp::EditorSkin> editorSkin { xtp::EditorSkin::hammerDrill };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (XtoneProcessor)
 };

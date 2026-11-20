@@ -10,6 +10,7 @@ public:
     explicit HeaderBar (XtoneProcessor&);
     void paint (juce::Graphics&) override;
     void resized() override;
+    juce::Rectangle<int> presetDockBounds() const;
 
 private:
     void timerCallback() override;

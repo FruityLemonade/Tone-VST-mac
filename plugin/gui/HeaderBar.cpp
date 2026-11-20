@@ -1,5 +1,7 @@
 #include "HeaderBar.h"
 
+#include "FaceplateArtwork.h"
+
 #include "HammerLookAndFeel.h"
 #include "../PluginProcessor.h"
 
@@ -54,33 +56,27 @@ void HeaderBar::timerCallback()
         presets.setSelectedItemIndex (current, dontSendNotification);
 }
 
+Rectangle<int> HeaderBar::presetDockBounds() const
+{
+    auto area = getLocalBounds().withTrimmedRight (35);
+    return area.removeFromRight (jlimit (310, 390, area.getWidth() / 2)).reduced (0, 5);
+}
+
 void HeaderBar::resized()
 {
-    auto r = getLocalBounds();
-    auto dock = r.removeFromRight (jlimit (340, 450, getWidth() / 2)).reduced (8, 10);
-    dock.removeFromLeft (58);
-    save.setBounds (dock.removeFromRight (88));
+    auto dock = presetDockBounds().reduced (8, 6);
+    dock.removeFromLeft (56);
+    save.setBounds (dock.removeFromRight (73));
     dock.removeFromRight (4);
-    load.setBounds (dock.removeFromRight (66));
+    load.setBounds (dock.removeFromRight (67));
     dock.removeFromRight (4);
     presets.setBounds (dock);
 }
 
 void HeaderBar::paint (Graphics& g)
 {
-    auto left = getLocalBounds().withTrimmedRight (jlimit (340, 450, getWidth() / 2));
-    const bool stacked = left.getWidth() < 455;
-    auto logo = stacked ? left.removeFromTop (34) : left.removeFromLeft (160);
-    g.setColour (hammer::ink);
-    g.setFont (hammer::font (stacked ? 34.0f : 45.0f, Font::bold | Font::italic).withHorizontalScale (1.13f));
-    g.drawFittedText ("XTONE", logo.reduced (2, 0), Justification::centredLeft, 1, 0.75f);
-    g.setFont (hammer::font (13.0f, Font::bold));
-    g.drawText ("EXTRATONE RETRIGGER SAMPLER", left, Justification::centredLeft);
-
-    const auto dock = getLocalBounds().removeFromRight (jlimit (340, 450, getWidth() / 2)).reduced (0, 5);
-    if (! stacked)
-        hammer::drawVents (g, Rectangle<float> (38.0f, 22.0f).withCentre ({ (float) dock.getX() - 36.0f, (float) dock.getCentreY() }));
-    hammer::drawPresetBezel (g, dock.toFloat());
+    const auto dock = presetDockBounds();
+    hammer::artwork::drawPresetDock (g, dock, hammer::skinFor (*this));
     g.setColour (hammer::ink);
     g.setFont (hammer::font (11.0f, Font::bold));
     g.drawText ("PRESET", dock.withTrimmedLeft (14), Justification::centredLeft);

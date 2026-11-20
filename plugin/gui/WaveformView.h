@@ -5,8 +5,8 @@
 
 class XtoneProcessor;
 
-/// Waveform with slice markers, highlighted current slice, scan window and play position.
-/// Double click: add marker, drag: move, right click: delete.
+/// Waveform with independent selected and playing slices.
+/// Click selects a slice. Double-click adds a marker, drag moves it, right-click removes it.
 class WaveformView : public juce::Component, private juce::Timer, private juce::ScrollBar::Listener
 {
 public:
@@ -15,6 +15,7 @@ public:
 
     void paint (juce::Graphics&) override;
     void resized() override;
+    void mouseMove (const juce::MouseEvent&) override;
     void mouseDown (const juce::MouseEvent&) override;
     void mouseDrag (const juce::MouseEvent&) override;
     void mouseUp (const juce::MouseEvent&) override;
@@ -38,6 +39,8 @@ private:
     bool usesTwoToolbarRows() const;
     double xToFrame (float x) const;
     float frameToX (double frame) const;
+    int markerAt (float x) const;
+    void selectSlice (int index);
 
     XtoneProcessor& proc;
     juce::TextButton loadSample { juce::String::fromUTF8 ("Load Sample…") }, normalize { "Normalize" };
@@ -51,13 +54,14 @@ private:
     struct PlotState
     {
         float position = -1.0f, scan = 0.0f, length = 100.0f;
-        int slice = 0;
+        int selectedSlice = 0, playingSlice = -1;
     };
 
     xtp::SampleAsset::Ptr asset;
     PlotState plotState;
     juce::String detectionMessage;
     bool sliceMenuOpen = false;
+    bool selectOnRelease = false;
     double visibleStart { 0.0 }, visibleLength { 0.0 };
     int dragIndex { -1 };
     xt::SliceModel dragSlices;
