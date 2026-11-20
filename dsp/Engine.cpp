@@ -35,11 +35,14 @@ void Engine::setEngineRate (double newFs) noexcept
     paramsDirty = true;
 }
 
-void Engine::setSource (const SourceView& src) noexcept
+void Engine::setSource (const SourceView& src, bool keepVoices) noexcept
 {
-    for (auto& l : lanes) l.killAll();
-    audition.kill();
-    std::fill (std::begin (cyclingTicks), std::end (cyclingTicks), 0u);
+    if (! keepVoices)
+    {
+        for (auto& l : lanes) l.killAll();
+        audition.kill();
+        std::fill (std::begin (cyclingTicks), std::end (cyclingTicks), 0u);
+    }
     source = src;
 }
 
@@ -375,6 +378,13 @@ HitStart Engine::makeHit (int slice, bool useB, double scanMod) const noexcept
     h.speedRatio = source.sample.sampleRate / fsE;
     h.interp = (Interp) std::clamp (useB ? params.abInterp : params.interp, 0, 2);
     h.mono = useB ? params.abMono : params.mono;
+    const auto& envelope = source.envelopes != nullptr && source.envelopes[slice].has_value()
+                         ? *source.envelopes[slice] : params.hitEnvelope;
+    const double samplesPerMs = fsE * 0.001;
+    h.attackSamples = envelope.attackMs * samplesPerMs;
+    h.decaySamples = envelope.decayMs * samplesPerMs;
+    h.sustain = envelope.sustain;
+    h.releaseSamples = envelope.releaseMs * samplesPerMs;
     return h;
 }
 
@@ -398,7 +408,7 @@ void Engine::fireHit (int k, double subOffset, double periodSamples, double scan
         step = &params.steps[(size_t) index];
         if (! step->on)
         {
-            lanes[k].releaseAll (fade);
+            lanes[k].gateOff (fade);
             return;
         }
         if (step->tie) return;
@@ -439,7 +449,7 @@ void Engine::fireHit (int k, double subOffset, double periodSamples, double scan
         if (numLanes * (limit + 1) > kMaxTotalVoices) limit = std::max (1, kMaxTotalVoices / numLanes - 1);
     }
     const double stealFade = cut ? h.fadeSamples : 0.0005 * fsE;
-    lanes[k].trigger (h, limit, stealFade);
+    lanes[k].trigger (h, limit, stealFade, cut);
 }
 
 double Engine::modulation (double EngineParams::Lfo::* depth) const noexcept

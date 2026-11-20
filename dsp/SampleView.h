@@ -1,6 +1,9 @@
 #pragma once
+#include "HitEnvelope.h"
+
 #include <algorithm>
 #include <cstdint>
+#include <optional>
 
 namespace xt
 {
@@ -22,6 +25,7 @@ struct SourceView
     SampleView sample;
     const int64_t* bounds { nullptr }; // numSlices + 1 entries, ascending, bounds[0] = 0, bounds[n] = frames
     int numSlices { 0 };
+    const std::optional<HitEnvelope>* envelopes { nullptr }; // numSlices entries, empties use the trigger defaults
 
     bool valid() const noexcept { return sample.valid() && bounds != nullptr && numSlices > 0; }
 };

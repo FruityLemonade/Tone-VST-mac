@@ -55,8 +55,8 @@ public:
     /// Asynchronous load (decodes on a background thread).
     void loadSampleFile (const juce::File& f);
     void normalizeSample();
-    /// Replace markers if the asset being edited is still current.
-    bool setMarkers (const xtp::SampleAsset& asset, std::vector<int64_t> markers);
+    /// Replace slice settings if the asset being edited is still current.
+    bool setSlices (const xtp::SampleAsset& asset, xt::SliceModel slices);
     /// Analyse a snapshot off the message thread. Completion reports the marker count,
     /// or nullopt if the result was superseded by another edit or sample load.
     void detectTransients (xtp::SampleAsset::Ptr asset, double sensitivity,

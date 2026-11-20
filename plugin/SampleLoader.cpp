@@ -100,10 +100,11 @@ xt::SourceView SampleAsset::view() const noexcept
     v.sample.sampleRate = audio->sampleRate;
     v.bounds = bounds.data();
     v.numSlices = (int) bounds.size() - 1;
+    v.envelopes = slices.getEnvelopes().data();
     return v;
 }
 
-SampleAsset::Ptr SampleAsset::withMarkers (std::vector<int64_t> markers) const
+SampleAsset::Ptr SampleAsset::withSlices (xt::SliceModel next) const
 {
     SampleAsset::Ptr a = new SampleAsset();
     a->audio = audio;
@@ -114,8 +115,7 @@ SampleAsset::Ptr SampleAsset::withMarkers (std::vector<int64_t> markers) const
     a->isDefault = isDefault;
     a->normalized = normalized;
     a->cachedSampleTree = cachedSampleTree; // audio unchanged -> same SAMPLE node
-    a->slices.setLength (audio ? audio->frames() : 0);
-    a->slices.setMarkers (std::move (markers));
+    a->slices = std::move (next);
     a->bounds = a->slices.bounds();
     return a;
 }
@@ -147,6 +147,19 @@ ValueTree SampleAsset::getSlicesTree() const
     const auto& m = slices.getMarkers();
     MemoryBlock mb (m.data(), m.size() * sizeof (int64_t));
     t.setProperty ("markers", var (mb), nullptr);
+    for (int i = 0; i < slices.numSlices(); ++i)
+    {
+        if (const auto& env = slices.getEnvelopes()[(size_t) i]; env.has_value())
+        {
+            ValueTree entry ("ADSR");
+            entry.setProperty ("start", (int64) bounds[(size_t) i], nullptr);
+            entry.setProperty ("attack", env->attackMs, nullptr);
+            entry.setProperty ("decay", env->decayMs, nullptr);
+            entry.setProperty ("sustain", env->sustain, nullptr);
+            entry.setProperty ("release", env->releaseMs, nullptr);
+            t.appendChild (entry, nullptr);
+        }
+    }
     return t;
 }
 
@@ -234,7 +247,7 @@ namespace loader
         a->origPath = src.origPath;
         a->isDefault = src.isDefault;
         a->normalized = true;
-        a->slices.setMarkers (src.slices.getMarkers());
+        a->slices = src.slices;
         a->bounds = a->slices.bounds();
         return a;
     }

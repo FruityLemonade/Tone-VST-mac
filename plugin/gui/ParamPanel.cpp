@@ -187,6 +187,7 @@ ParamPanel::ParamPanel (XtoneProcessor& p)
 
     auto trigger = std::make_unique<ScrollingPage> (p);
     trigger->page.addGroup ("retrigger", "RETRIGGER");
+    trigger->page.addGroup ("hit_envelope", "TRIGGER ADSR");
     trigger->page.addGroup ("unison", "UNISON");
     addPage ("Trigger", std::move (trigger));
 

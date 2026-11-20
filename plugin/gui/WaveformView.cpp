@@ -21,6 +21,98 @@ WindowParameterIds windowParameters (bool sliceB)
     return sliceB ? WindowParameterIds { "ab_scan", "ab_length", "ab_reverse" }
                   : WindowParameterIds { "scan", "length", "reverse" };
 }
+
+class SliceEnvelopeEditor final : public Component
+{
+public:
+    SliceEnvelopeEditor (int slice, const xt::HitEnvelope& defaults, const std::optional<xt::HitEnvelope>& custom,
+                         std::function<void (std::optional<xt::HitEnvelope>)> save)
+    {
+        heading.setText ("Slice " + String (slice + 1) + " ADSR", dontSendNotification);
+        heading.setFont (hammer::font (17.0f, Font::bold));
+        addAndMakeVisible (heading);
+        customToggle.setToggleState (custom.has_value(), dontSendNotification);
+        customToggle.setTooltip ("Override the Trigger ADSR for every hit that plays this slice.");
+        customToggle.onClick = [this] { updateEnabled(); };
+        addAndMakeVisible (customToggle);
+
+        const auto env = custom.value_or (defaults);
+        const std::array<double, 4> values { env.attackMs, env.decayMs, env.sustain * 100.0, env.releaseMs };
+        constexpr const char* names[] { "Attack", "Decay", "Sustain", "Release" };
+        for (size_t i = 0; i < sliders.size(); ++i)
+        {
+            labels[i].setText (names[i], dontSendNotification);
+            labels[i].setFont (hammer::font (14.0f));
+            addAndMakeVisible (labels[i]);
+            auto& slider = sliders[i];
+            slider.setName (names[i]);
+            slider.setSliderStyle (Slider::LinearHorizontal);
+            slider.setTextBoxStyle (Slider::TextBoxRight, false, 73, 24);
+            const bool sustain = i == 2;
+            slider.setRange (0.0, sustain ? 100.0 : xt::HitEnvelope::kMaxTimeMs,
+                             sustain ? 0.1 : xt::HitEnvelope::kTimeStepMs);
+            if (! sustain) slider.setSkewFactorFromMidPoint (xt::HitEnvelope::kTimeMidpointMs);
+            slider.setTextValueSuffix (sustain ? " %" : " ms");
+            slider.setValue (values[i], dontSendNotification);
+            addAndMakeVisible (slider);
+        }
+        updateEnabled();
+        cancel.onClick = [this] { close(); };
+        apply.onClick = [this, saveEnvelope = std::move (save)]
+        {
+            std::optional<xt::HitEnvelope> envelope;
+            if (customToggle.getToggleState())
+                envelope = xt::HitEnvelope { (float) sliders[0].getValue(), (float) sliders[1].getValue(),
+                                             (float) (sliders[2].getValue() * 0.01), (float) sliders[3].getValue() };
+            saveEnvelope (envelope);
+            close();
+        };
+        addAndMakeVisible (cancel);
+        addAndMakeVisible (apply);
+        setSize (313, 216);
+    }
+
+    void paint (Graphics& g) override
+    {
+        g.setColour (hammer::panelColours (*this).rubber);
+        g.fillRoundedRectangle (getLocalBounds().toFloat(), 6.0f);
+    }
+
+    void resized() override
+    {
+        auto area = getLocalBounds().reduced (9);
+        heading.setBounds (area.removeFromTop (25));
+        customToggle.setBounds (area.removeFromTop (25));
+        area.removeFromTop (5);
+        for (size_t i = 0; i < sliders.size(); ++i)
+        {
+            auto row = area.removeFromTop (28);
+            labels[i].setBounds (row.removeFromLeft (66));
+            sliders[i].setBounds (row);
+        }
+        auto buttons = area.removeFromBottom (25);
+        apply.setBounds (buttons.removeFromRight (74));
+        buttons.removeFromRight (6);
+        cancel.setBounds (buttons.removeFromRight (74));
+    }
+
+private:
+    void updateEnabled()
+    {
+        for (auto& slider : sliders) slider.setEnabled (customToggle.getToggleState());
+    }
+
+    void close()
+    {
+        if (auto* box = findParentComponentOfClass<CallOutBox>()) box->dismiss();
+    }
+
+    Label heading;
+    ToggleButton customToggle { "Use custom ADSR" };
+    std::array<Label, 4> labels;
+    std::array<Slider, 4> sliders;
+    TextButton cancel { "Cancel" }, apply { "Apply" };
+};
 }
 
 WaveformView::WaveformView (XtoneProcessor& p) : proc (p)
@@ -54,7 +146,7 @@ WaveformView::WaveformView (XtoneProcessor& p) : proc (p)
     zoomOutButton.setTitle ("Zoom out on waveform");
     zoomInButton.setTitle ("Zoom in on waveform");
     resetZoomButton.setTitle ("Show the entire sample");
-    sliceButton.setTooltip ("Create evenly spaced slices or clear the slice markers");
+    sliceButton.setTooltip ("Edit the selected slice's ADSR, create evenly spaced slices, or clear markers.");
     scrollbar.setAutoHide (true);
     scrollbar.setName ("Scroll waveform");
     scrollbar.addListener (this);
@@ -84,6 +176,7 @@ WaveformView::~WaveformView()
 {
     finishTrim();
     if (sliceMenuOpen) PopupMenu::dismissAllActiveMenus();
+    if (envelopeEditor != nullptr) envelopeEditor->dismiss();
     scrollbar.removeListener (this);
 }
 
@@ -173,10 +266,15 @@ void WaveformView::chooseSample()
 void WaveformView::showSliceMenu()
 {
     updateAsset();
-    if (asset == nullptr || sliceMenuOpen || ! isShowing()) return;
+    if (asset == nullptr || sliceMenuOpen || envelopeEditor != nullptr || ! isShowing()) return;
 
     PopupMenu menu, equal;
     menu.setLookAndFeel (&getLookAndFeel());
+    updatePlotState();
+    const int selected = windowSlice (false);
+    constexpr int editAdsr = 65;
+    menu.addItem (editAdsr, "Edit Slice " + String (selected + 1) + String::fromUTF8 (" ADSR…"));
+    menu.addSeparator();
     for (int first = 2; first <= 64;)
     {
         const int last = jmin (64, (first + 7) / 8 * 8);
@@ -191,22 +289,50 @@ void WaveformView::showSliceMenu()
     menu.addItem (clearMarkers, "Clear All Markers", ! asset->slices.getMarkers().empty());
     sliceMenuOpen = true;
     menu.showMenuAsync (PopupMenu::Options().withTargetComponent (&sliceButton),
-                        [self = SafePointer<WaveformView> (this), target = asset] (int choice)
+                        [self = SafePointer<WaveformView> (this), target = asset, selected] (int choice)
     {
         if (self == nullptr) return;
         self->sliceMenuOpen = false;
         if (choice == 0) return;
-        if (choice == clearMarkers)
+        if (choice == editAdsr)
         {
-            self->proc.setMarkers (*target, {});
+            self->editSliceEnvelope (target, selected);
+            return;
         }
-        else
+        auto slices = target->slices;
+        if (choice == clearMarkers) slices.clear();
+        else slices.setEqual (choice);
+        self->proc.setSlices (*target, std::move (slices));
+    });
+}
+
+void WaveformView::editSliceEnvelope (xtp::SampleAsset::Ptr target, int slice)
+{
+    auto* editor = findParentComponentOfClass<AudioProcessorEditor>();
+    if (editor == nullptr || ! isShowing() || proc.getCurrentAsset() != target) return;
+
+    const auto raw = [this] (size_t i) { return proc.apvts.getRawParameterValue (xtp::triggerEnvelopeIds[i])->load(); };
+    const xt::HitEnvelope defaults { raw (0), raw (1), raw (2) * 0.01f, raw (3) };
+    const auto custom = target->slices.getEnvelopes()[(size_t) slice];
+    auto content = std::make_unique<SliceEnvelopeEditor> (slice, defaults, custom,
+        [self = SafePointer<WaveformView> (this), target, slice, custom] (std::optional<xt::HitEnvelope> envelope)
+    {
+        if (self == nullptr) return;
+        if (! custom && ! envelope) return;
+        if (custom && envelope && approximatelyEqual (custom->attackMs, envelope->attackMs)
+            && approximatelyEqual (custom->decayMs, envelope->decayMs)
+            && approximatelyEqual (custom->sustain, envelope->sustain)
+            && approximatelyEqual (custom->releaseMs, envelope->releaseMs)) return;
+        auto slices = target->slices;
+        slices.setEnvelope (slice, envelope);
+        if (! self->proc.setSlices (*target, std::move (slices)))
         {
-            auto slices = target->slices;
-            slices.setEqual (choice);
-            self->proc.setMarkers (*target, slices.getMarkers());
+            self->detectionMessage = "Sample or slices changed. Reopen Slice ADSR.";
+            self->updateStatus();
         }
     });
+    envelopeEditor = &CallOutBox::launchAsynchronously (std::move (content),
+        editor->getLocalArea (&sliceButton, sliceButton.getLocalBounds()), editor);
 }
 
 void WaveformView::updateAsset()
@@ -723,7 +849,7 @@ void WaveformView::mouseDown (const MouseEvent& e)
     {
         auto slices = asset->slices;
         slices.remove (index);
-        proc.setMarkers (*asset, slices.getMarkers());
+        proc.setSlices (*asset, std::move (slices));
     }
     else if (selectOnRelease)
     {
@@ -776,7 +902,7 @@ void WaveformView::mouseUp (const MouseEvent& e)
     if (const int marker = std::exchange (dragIndex, -1); marker >= 0)
     {
         if (dragSlices.getMarkers() != asset->slices.getMarkers())
-            proc.setMarkers (*asset, dragSlices.getMarkers());
+            proc.setSlices (*asset, dragSlices);
         else if (select)
             selectSlice (marker + 1);
         repaint();
@@ -804,7 +930,7 @@ void WaveformView::mouseDoubleClick (const MouseEvent& e)
     updateAsset();
     if (visibleLength <= 0.0 || e.mods.isPopupMenu() || e.mods.isAltDown() || ! waveArea().contains (e.getPosition())) return;
     auto slices = asset->slices;
-    if (slices.add (std::llround (xToFrame (e.position.x)))) proc.setMarkers (*asset, slices.getMarkers());
+    if (slices.add (std::llround (xToFrame (e.position.x)))) proc.setSlices (*asset, std::move (slices));
 }
 
 void WaveformView::mouseWheelMove (const MouseEvent& e, const MouseWheelDetails& wheel)

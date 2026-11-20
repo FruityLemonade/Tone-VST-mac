@@ -54,7 +54,7 @@ Click the **XTONE** wordmark and choose a skin. **Cotton Candy** uses the Teddy 
 | --- | --- |
 | **Rate** | **BPM** uses XTONE's own tempo with a straight, dotted, or triplet division. **Hz** sets hits per second directly. **Host ×** multiplies the project tempo before applying the division. **Host Phase Lock** aligns the clock at transport starts and jumps. **Rate Smoothing** softens rate changes. Set it to zero for immediate jumps. The display shows Hz, BPM equivalent, and pitch in scientific and FL Studio notation. |
 | **Pitch** | **Pitch** MIDI mode maps notes to retrigger pitch. **Relative** plays the selected rate at **Root Note** and doubles it one octave up. **Absolute** tunes directly from the **A4 Reference**, normally 440 Hz. **Slice** MIDI mode uses notes to select slices relative to **Slice Base Note** and the current slice. Transpose, fine tuning, glide, pitch bend, phase reset, and velocity sensitivity shape MIDI response. **Tune Snap** quantizes the base pitch in **Base** mode and also quantizes modulation in **All** mode. |
-| **Trigger** | **Cut** replaces the previous hit. **Overlap** lets hits ring together up to the voice limit. **Declick** fades hit edges, **Gate** limits hits to a fraction of the retrigger period, and **Jitter** varies their spacing. **Unison** runs up to eight independent clocks with symmetric detune, stereo width, and optional random starting phases. |
+| **Trigger** | **Cut** replaces the previous hit. **Overlap** lets hits ring together up to the voice limit. **Declick** smooths hit edges, **Gate** sets when the hit enters release within each retrigger period, and **Jitter** varies hit spacing. **Trigger ADSR** sets the default amplitude envelope for each hit. **Unison** runs up to eight independent clocks with symmetric detune, stereo width, and optional random starting phases. |
 | **Sample** | Choose **Slice**, shorten **Length**, and use **Start Scan** to move the playback window. **Reverse**, **Mono**, and **Interpolation** change how the sample is read. **Sample Pitch**, fine tuning, and the per-hit pitch envelope change the sample's playback speed independently of the retrigger clock. |
 | **Cycling** | Alternate A and B using **AB**, **AAB**, **ABB**, or **Random**. B has its own slice, window, direction, interpolation, mono setting, level, pitch, and pitch envelope. **Pitch Offset B** adds a musical interval to **Sample Pitch B**. |
 | **Motion** | **Ramp Enabled** sweeps the retrigger rate from **Start** to **End** in octaves relative to the base rate. **Time** controls the duration, **Curve** shapes the sweep, and **Repeat** holds the endpoint, loops, or alternates direction. **Restart on Legato** also restarts the ramp on overlapping notes. The endpoints are shown in BPM equivalent before LFOs and final rate snapping. |
@@ -67,10 +67,13 @@ MIDI note 60 is C4 in scientific notation and C5 in FL Studio.
 
 - **Normalize** raises the sample peak to full scale.
 - Click the waveform to select a slice. Double-click to add a marker, drag it to move it, or right-click to delete it. **Slices** also offers **Slice Evenly** and **Clear All Markers**.
+- To give a slice its own amplitude envelope, select it and open **Slices → Edit Slice ADSR**. Turn on **Use custom ADSR**, set the four values, and click **Apply**. Turn the option off and apply to follow the Trigger defaults again. The same envelope applies when MIDI, Cycling, the sequencer, or audition plays that slice.
 - **Transients** analyzes the entire sample at the selected **Sensitivity**. Detected transients replace the markers and remain editable by hand. If analysis finds no transients, it keeps the existing markers.
 - Alt-click on Windows or Option-click on macOS to audition a slice once through the output. If A and B share a slice, audition B by clicking its violet handle with the modifier held.
 - Drag a playback handle to trim its edge while keeping the opposite edge in place. The waveform shows A in the skin accent and B in violet. The white rail indicates playback.
 - Scroll to zoom at the pointer. Pan with Shift-scroll, horizontal trackpad scrolling, or the scrollbar. Use **−**, **+**, and **Fit** to adjust the view from the toolbar.
+
+Hit attack and decay restart on each trigger. Release begins when the gate closes or the sequencer reaches a rest. At 100% gate, the release fades toward the playback window's end. The playback window and Cut mode can still end a hit early. **Amp** shapes the combined output across the MIDI note.
 
 ## Programming the sequencer
 
@@ -78,7 +81,7 @@ Enable **Sequencer On** and choose a length from 1 to 32 steps. Each lane advanc
 
 | Row | What it does |
 | --- | --- |
-| **On** | Enable a hit or leave a rest. A rest fades the previous sound using **Declick**. |
+| **On** | Enable a hit or leave a rest. A rest releases playing hits, with **Declick** setting the minimum fade time. |
 | **Tie** | With **On** enabled, let the previous hit continue through this tick without a new hit. |
 | **Slice** | Choose a numbered slice. Enter **0** (shown as a dash) to follow the current sample or MIDI slice. |
 | **Pitch** | Offset sample playback by −24 to +24 semitones. |
@@ -92,7 +95,7 @@ The sequencer takes priority over **Cycling**. At audio rates an evenly repeatin
 
 ## Saving sounds and projects
 
-DAW projects and **Save** / **Load** in the preset bar store parameters, samples, markers, and all 32 sequencer steps. Sample files up to 32 MB are embedded. Larger files are saved by path, so keep the original at that location. A missing sample falls back to the built-in kick. The factory preset menu applies parameter settings to the current sample. Start with **Init**, **Speed Grid 500**, or **Melodic A440**.
+DAW projects and **Save** / **Load** in the preset bar store parameters, samples, markers, slice ADSR overrides, and all 32 sequencer steps. Sample files up to 32 MB are embedded. Larger files are saved by path, so keep the original at that location. A missing sample falls back to the built-in kick. The factory preset menu applies parameter settings to the current sample. Start with **Init**, **Speed Grid 500**, or **Melodic A440**.
 
 ## Building from source
 

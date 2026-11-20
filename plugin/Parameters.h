@@ -5,6 +5,8 @@
 
 namespace xtp
 {
+inline constexpr const char* triggerEnvelopeIds[] { "hit_attack", "hit_decay", "hit_sustain", "hit_release" };
+
 /// Parameter layout. IDs are STABLE - never rename or remove after the first release,
 /// only append new ones with a higher version hint.
 juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
@@ -27,6 +29,7 @@ private:
         *pbRange, *phaseReset, *velSens;
     std::atomic<float>*snapMode, *snapScale, *snapRoot;
     std::atomic<float>*trigMode, *declick, *gate, *voices, *jitter;
+    std::atomic<float>*hitAttack, *hitDecay, *hitSustain, *hitRelease;
     std::atomic<float>*slice, *scan, *length, *reverse, *interp, *mono, *sPitch, *sFine, *penvAmt, *penvDecay;
     std::atomic<float>*abMode, *abSlice, *abPitch, *abGain;
     std::atomic<float>*abScan, *abLength, *abReverse, *abInterp, *abMono, *abSamplePitch, *abFine, *abPenvAmt, *abPenvDecay;

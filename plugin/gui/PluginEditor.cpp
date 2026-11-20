@@ -132,7 +132,7 @@ XtoneEditor::XtoneEditor (XtoneProcessor& p)
     constexpr const char* tabHelp[] {
         "Choose the clock source and set the retrigger rate.",
         "Set MIDI note behavior, tuning, glide, and scale snapping.",
-        "Set hit length, overlap, jitter, and unison voices.",
+        "Set gate, overlap, jitter, unison voices, and the default hit ADSR.",
         "Set the main slice, playback window, and sample pitch.",
         "Alternate between the main slice and independent B playback.",
         "Sweep the retrigger rate after a MIDI note-on.",

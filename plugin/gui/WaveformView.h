@@ -57,6 +57,7 @@ private:
     void updateStatus();
     void chooseSample();
     void showSliceMenu();
+    void editSliceEnvelope (xtp::SampleAsset::Ptr target, int slice);
     void startDetection();
     void setViewport (double start, double length);
     void zoomAt (double factor, double anchor);
@@ -88,6 +89,7 @@ private:
     juce::Label sampleName, sensitivityLabel, status;
     juce::ScrollBar scrollbar { false };
     std::unique_ptr<juce::FileChooser> chooser;
+    SafePointer<juce::CallOutBox> envelopeEditor;
 
     struct PlotState
     {

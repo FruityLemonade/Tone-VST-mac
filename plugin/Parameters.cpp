@@ -231,6 +231,17 @@ AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
         g->addChild (std::make_unique<APF> (pid ("ab_penv_decay", 2), "Pitch Env Decay B", skewRange (0.1f, 2000.0f, 100.0f), 50.0f, unitAttr ("ms", 1)));
         layout.add (std::move (g));
     }
+    {
+        auto g = std::make_unique<AudioProcessorParameterGroup> ("hit_envelope", "Trigger ADSR", "|");
+        const auto time = skewRange (0.0f, xt::HitEnvelope::kMaxTimeMs, xt::HitEnvelope::kTimeMidpointMs,
+                                     xt::HitEnvelope::kTimeStepMs);
+        g->addChild (std::make_unique<APF> (pid (triggerEnvelopeIds[0], 3), "Hit Attack", time, 0.0f, unitAttr ("ms", 2)));
+        g->addChild (std::make_unique<APF> (pid (triggerEnvelopeIds[1], 3), "Hit Decay", time, 0.0f, unitAttr ("ms", 2)));
+        g->addChild (std::make_unique<APF> (pid (triggerEnvelopeIds[2], 3), "Hit Sustain",
+                                           NormalisableRange<float> (0.0f, 100.0f, 0.1f), 100.0f, unitAttr ("%", 1)));
+        g->addChild (std::make_unique<APF> (pid (triggerEnvelopeIds[3], 3), "Hit Release", time, 0.0f, unitAttr ("ms", 2)));
+        layout.add (std::move (g));
+    }
     return layout;
 }
 
@@ -251,6 +262,8 @@ ParamSnapshot::ParamSnapshot (AudioProcessorValueTreeState& s)
     glideLegato = get ("glide_legato"); pbRange = get ("pb_range"); phaseReset = get ("phase_reset"); velSens = get ("vel_sens");
     snapMode = get ("snap_mode"); snapScale = get ("snap_scale"); snapRoot = get ("snap_root");
     trigMode = get ("trig_mode"); declick = get ("declick"); gate = get ("gate"); voices = get ("voices"); jitter = get ("jitter");
+    hitAttack = get (triggerEnvelopeIds[0]); hitDecay = get (triggerEnvelopeIds[1]);
+    hitSustain = get (triggerEnvelopeIds[2]); hitRelease = get (triggerEnvelopeIds[3]);
     slice = get ("slice"); scan = get ("scan"); length = get ("length"); reverse = get ("reverse"); interp = get ("interp");
     mono = get ("mono"); sPitch = get ("s_pitch"); sFine = get ("s_fine"); penvAmt = get ("penv_amt"); penvDecay = get ("penv_decay");
     abMode = get ("ab_mode"); abSlice = get ("ab_slice"); abPitch = get ("ab_pitch"); abGain = get ("ab_gain");
@@ -289,6 +302,7 @@ void ParamSnapshot::read (xt::EngineParams& p) const noexcept
     p.pbRange = d (pbRange); p.phaseReset = b (phaseReset); p.velSens = pc (velSens);
     p.snapMode = i (snapMode); p.snapScale = i (snapScale); p.snapRoot = i (snapRoot);
     p.trigMode = i (trigMode); p.declickMs = d (declick); p.gate = pc (gate); p.voices = i (voices); p.jitter = pc (jitter);
+    p.hitEnvelope = { hitAttack->load(), hitDecay->load(), hitSustain->load() * 0.01f, hitRelease->load() };
     p.slice = i (slice); p.scan = pc (scan); p.length = pc (length); p.reverse = b (reverse); p.interp = i (interp);
     p.mono = b (mono); p.sPitch = d (sPitch); p.sFine = d (sFine); p.penvAmt = d (penvAmt); p.penvDecayMs = d (penvDecay);
     p.abMode = i (abMode); p.abSlice = i (abSlice); p.abPitch = d (abPitch); p.abGainDb = d (abGain);

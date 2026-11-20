@@ -4,12 +4,15 @@
 
 namespace xt
 {
-void Lane::trigger (const HitStart& h, int limit, double stealFade) noexcept
+void Lane::trigger (const HitStart& h, int limit, double stealFade, bool cut) noexcept
 {
     limit = std::clamp (limit, 1, kMaxVoices - 1);
 
     // displace the oldest playing voices until there is room
-    for (int nonRel = nonReleasingCount(); nonRel >= limit; --nonRel)
+    if (cut)
+        for (auto& v : voices) v.release (stealFade);
+
+    for (int nonRel = cut ? 0 : nonReleasingCount(); nonRel >= limit; --nonRel)
     {
         HitVoice* oldest = nullptr;
         for (auto& v : voices)

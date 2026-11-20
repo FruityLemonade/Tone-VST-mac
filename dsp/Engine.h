@@ -46,6 +46,7 @@ struct EngineParams
     double gate { 1.0 };
     int voices { 8 };
     double jitter { 0.0 };
+    HitEnvelope hitEnvelope;
     // Sample
     int slice { 0 };
     double scan { 0.0 };
@@ -157,9 +158,9 @@ public:
     void setEngineRate (double fsE) noexcept;
     double getEngineRate() const noexcept { return fsE; }
 
-    /// Swap the sample source. Real-time safe. All voices are stopped, the old
-    /// source is never touched again after this call.
-    void setSource (const SourceView& src) noexcept;
+    /// Swap the sample source without retaining the old view. Keep voices only
+    /// when the source audio and slice boundaries are identical.
+    void setSource (const SourceView& src, bool keepVoices = false) noexcept;
 
     void setParams (const EngineParams& p) noexcept { params = p; paramsDirty = true; }
     const EngineParams& getParams() const noexcept { return params; }

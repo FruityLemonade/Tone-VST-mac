@@ -19,15 +19,13 @@ public:
         for (auto& v : voices) v.kill();
     }
 
-    /// Start a new hit. At most `limit` voices are non-releasing afterwards; displaced
-    /// voices fade out over `stealFade` engine samples (0 = hard cut).
-    void trigger (const HitStart& h, int limit, double stealFade) noexcept;
+    /// Start a new hit. At most `limit` voices are non-releasing afterwards.
+    /// Cut also fades any previous release tails over at most `stealFade` samples.
+    void trigger (const HitStart& h, int limit, double stealFade, bool cut = false) noexcept;
 
-    /// Fade out all voices (sequencer rest, etc.).
-    void releaseAll (double fade) noexcept
+    void gateOff (double declickSamples) noexcept
     {
-        if (fade <= 0.0) killAll();
-        else for (auto& v : voices) v.release (fade);
+        for (auto& v : voices) v.gateOff (declickSamples);
     }
 
     void render (const SampleView& s, double pitchA, double pitchB, float& l, float& r) noexcept

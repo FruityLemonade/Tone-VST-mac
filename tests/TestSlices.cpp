@@ -32,6 +32,30 @@ TEST_CASE ("SliceModel basics", "[slices]")
     CHECK ((int) m.getMarkers().size() == SliceModel::kMaxMarkers);
 }
 
+TEST_CASE ("Slice envelopes follow their starts through marker edits", "[slices][adsr]")
+{
+    SliceModel model;
+    model.setLength (1000);
+    model.setMarkers ({ 200, 600 });
+    const HitEnvelope first { 1.0f, 2.0f, 0.3f, 4.0f };
+    const HitEnvelope second { 5.0f, 6.0f, 0.7f, 8.0f };
+    model.setEnvelope (0, first);
+    model.setEnvelope (1, second);
+
+    model.move (0, 250);
+    REQUIRE (model.add (125));
+    CHECK_FALSE (model.getEnvelopes()[1].has_value());
+    CHECK (model.getEnvelopes()[2] == second);
+    model.remove (0);
+    CHECK (model.getEnvelopes()[1] == second);
+    model.setMarkers ({ 100, 250, 400 });
+    CHECK (model.getEnvelopes()[2] == second);
+    model.remove (1);
+    CHECK_FALSE (model.getEnvelopes()[2].has_value());
+    model.clear();
+    CHECK (model.getEnvelopes()[0] == first);
+}
+
 TEST_CASE ("T12 onset markers follow click attacks at different source rates", "[slices][onsets]")
 {
     for (const double rate : { 44100.0, 48000.0, 96000.0 })

@@ -26,7 +26,7 @@ void writeSavedState (MemoryBlock& dest, const ValueTree& state)
     out.write (kStateMagic, kStateMagicSize);
     state.writeToStream (out);
 }
-constexpr int kStateVersion = 3;
+constexpr int kStateVersion = 4;
 
 static_assert (std::atomic<uint64_t>::is_always_lock_free);
 
@@ -60,6 +60,17 @@ void copyLegacyPlaybackToB (ValueTree& params)
         auto copy = source.createCopy();
         copy.setProperty ("id", pair[1], nullptr);
         params.appendChild (copy, nullptr);
+    }
+}
+
+void addMissingTriggerEnvelopeParams (ValueTree& params)
+{
+    for (const auto* id : xtp::triggerEnvelopeIds)
+    {
+        if (params.getChildWithProperty ("id", id).isValid()) continue;
+        ValueTree entry ("PARAM");
+        entry.setProperty ("id", id, nullptr);
+        params.appendChild (entry, nullptr); // APVTS applies the registered default when value is absent.
     }
 }
 } // namespace
@@ -136,7 +147,9 @@ void XtoneProcessor::swapPendingAsset() noexcept
     if (retireFifo.getFreeSpace() < 1) return; // try again next chunk
     auto* next = pending.exchange (nullptr, std::memory_order_acq_rel);
     if (next == nullptr) return;
-    engine.setSource (next->view());
+    const bool keepVoices = audioAsset != nullptr && next->audio == audioAsset->audio
+                         && next->bounds == audioAsset->bounds;
+    engine.setSource (next->view(), keepVoices);
     if (audioAsset != nullptr)
     {
         const auto scope = retireFifo.write (1);
@@ -315,9 +328,11 @@ void XtoneProcessor::normalizeSample()
     publish (xtp::loader::normalizedCopy (*a), a.get());
 }
 
-bool XtoneProcessor::setMarkers (const xtp::SampleAsset& asset, std::vector<int64_t> markers)
+bool XtoneProcessor::setSlices (const xtp::SampleAsset& asset, xt::SliceModel slices)
 {
-    return publish (asset.withMarkers (std::move (markers)), &asset);
+    if (! publish (asset.withSlices (std::move (slices)), &asset)) return false;
+    updateHostDisplay (AudioProcessorListener::ChangeDetails().withNonParameterStateChanged (true));
+    return true;
 }
 
 void XtoneProcessor::detectTransients (xtp::SampleAsset::Ptr asset, double sensitivity,
@@ -332,8 +347,16 @@ void XtoneProcessor::detectTransients (xtp::SampleAsset::Ptr asset, double sensi
         {
             if (token.expired()) return;
             const auto count = (int) onsets.size();
-            const bool current = count > 0 ? setMarkers (*asset, std::move (onsets)) : getCurrentAsset() == asset;
-            finished (current ? std::optional<int> { count } : std::nullopt);
+            if (count > 0)
+            {
+                auto slices = asset->slices;
+                slices.setMarkers (std::move (onsets));
+                finished (setSlices (*asset, std::move (slices)) ? std::optional<int> { count } : std::nullopt);
+            }
+            else
+            {
+                finished (getCurrentAsset() == asset ? std::optional<int> { 0 } : std::nullopt);
+            }
         });
     });
 }
@@ -485,25 +508,50 @@ void XtoneProcessor::restoreState (const ValueTree& root)
 
     if (auto params = root.getChildWithName (apvts.state.getType()); params.isValid())
     {
-        if ((int) root.getProperty ("stateVersion", 1) < 2)
+        const int version = (int) root.getProperty ("stateVersion", 1);
+        if (version < 4)
         {
             params = params.createCopy();
-            copyLegacyPlaybackToB (params);
+            if (version < 2) copyLegacyPlaybackToB (params);
+            addMissingTriggerEnvelopeParams (params);
         }
         apvts.replaceState (params);
     }
 
     String error;
     auto asset = xtp::loader::fromStateTree (root.getChildWithName ("SAMPLE"), error);
+    const bool restoredSample = asset != nullptr;
     if (asset == nullptr) asset = xtp::loader::makeDefault();
 
     if (auto slices = root.getChildWithName ("SLICES"); slices.isValid())
+    {
+        auto model = asset->slices;
         if (auto* mb = slices.getProperty ("markers").getBinaryData())
         {
             std::vector<int64_t> m (mb->getSize() / sizeof (int64_t));
             if (! m.empty()) std::memcpy (m.data(), mb->getData(), m.size() * sizeof (int64_t));
-            asset = asset->withMarkers (std::move (m));
+            model.setMarkers (std::move (m));
         }
+        const auto bounds = model.bounds();
+        const auto end = bounds.end() - 1;
+        for (const auto& entry : slices)
+        {
+            if (! restoredSample || ! entry.hasType ("ADSR")) continue;
+            const auto start = (int64_t) (int64) entry.getProperty ("start", -1);
+            const auto match = std::lower_bound (bounds.begin(), end, start);
+            if (match == end || *match != start) continue;
+            const auto read = [&entry] (const char* id, float fallback, float max)
+            {
+                const auto value = (float) entry.getProperty (id, fallback);
+                return std::isfinite (value) ? std::clamp (value, 0.0f, max) : fallback;
+            };
+            constexpr auto maxTime = xt::HitEnvelope::kMaxTimeMs;
+            model.setEnvelope ((int) (match - bounds.begin()),
+                               xt::HitEnvelope { read ("attack", 0.0f, maxTime), read ("decay", 0.0f, maxTime),
+                                                 read ("sustain", 1.0f, 1.0f), read ("release", 0.0f, maxTime) });
+        }
+        asset = asset->withSlices (std::move (model));
+    }
     {
         const ScopedLock sl (guiLock);
         statusMessage = error;

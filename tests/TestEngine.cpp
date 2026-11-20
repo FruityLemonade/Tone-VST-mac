@@ -10,6 +10,154 @@
 using namespace xt;
 using namespace xt::test;
 
+TEST_CASE ("Hit envelopes restart and release from the gate level", "[engine][adsr]")
+{
+    OwnedSource source (std::vector<float> (64, 1.0f), 48000.0);
+    HitStart hit;
+    hit.winEnd = 64.0;
+    hit.interp = Interp::Raw;
+    hit.subOffset = 0.5;
+    hit.attackSamples = 4.0;
+    hit.decaySamples = 4.0;
+    hit.sustain = 0.25f;
+    hit.releaseSamples = 4.0;
+    hit.gateSamples = 6.0;
+    HitVoice voice;
+    voice.start (hit, 1);
+
+    std::array<float, 12> out {};
+    for (auto& sample : out)
+    {
+        float right = 0.0f;
+        voice.render (source.view().sample, 1.0, sample, right);
+    }
+    CHECK (out[0] == 0.125f);
+    CHECK (out[3] == 0.875f);
+    CHECK (out[5] == 0.71875f);
+    CHECK (out[6] == 0.625f);
+    CHECK (out[8] == 0.3125f);
+    CHECK (out[10] == 0.0f);
+    CHECK_FALSE (voice.isActive());
+
+    hit.subOffset = 0.0;
+    hit.gateSamples = -1.0;
+    hit.winEnd = 16.0;
+    voice.start (hit, 2);
+    for (int t = 0; t < 16; ++t)
+    {
+        float level = 0.0f, right = 0.0f;
+        voice.render (source.view().sample, 1.0, level, right);
+        if (t == 0) CHECK (level == 0.0f);
+        if (t == 8) CHECK (level == 0.25f);
+        if (t == 14) CHECK (level == 0.125f);
+    }
+}
+
+TEST_CASE ("The triggered slice chooses its envelope across playback modes", "[engine][adsr]")
+{
+    constexpr double rate = 48000.0;
+    OwnedSource sample (std::vector<float> (2000, 1.0f), rate, { 1000 });
+    const std::array<std::optional<HitEnvelope>, 2> envelopes { std::nullopt, HitEnvelope { 0.0f, 0.0f, 0.25f, 0.0f } };
+    auto source = sample.view();
+    source.envelopes = envelopes.data();
+
+    Engine engine;
+    engine.setEngineRate (rate);
+    engine.setSource (source);
+    engine.setDcBlockerEnabled (false);
+    auto p = cleanParams();
+    p.hitEnvelope.sustain = 0.75f;
+    p.rateSrc = 1;
+    p.hz = 100.0;
+    p.interp = (int) Interp::Raw;
+    p.abInterp = (int) Interp::Raw;
+    int note = 60;
+
+    SECTION ("Selected and unconfigured slices")
+    {
+        engine.setParams (p);
+        engine.reset();
+        CHECK (render (engine, 64, 64, { noteOn (0, note) }).l[32] == 0.75f);
+        p.slice = 1;
+    }
+    SECTION ("MIDI selection")
+    {
+        p.midiMode = 1;
+        note = 61;
+    }
+    SECTION ("Sequencer") { p.seqOn = true; p.steps[0].slice = 1; }
+    SECTION ("Cycling")
+    {
+        p.abMode = 1;
+        engine.setParams (p);
+        engine.reset();
+        const auto out = render (engine, 550, 64, { noteOn (0, note) });
+        CHECK (out.l[32] == 0.75f);
+        CHECK (out.l[512] == 0.25f);
+        return;
+    }
+    SECTION ("Audition")
+    {
+        engine.setParams (p);
+        engine.reset();
+        engine.auditionSlice (1);
+        CHECK (render (engine, 64, 64, {}).l[32] == 0.25f * 0.7f);
+        return;
+    }
+
+    engine.setParams (p);
+    engine.reset();
+    CHECK (render (engine, 64, 64, { noteOn (0, note) }).l[32] == 0.25f);
+}
+
+TEST_CASE ("A sequencer rest uses each hit's release", "[engine][adsr]")
+{
+    constexpr double rate = 48000.0;
+    OwnedSource sample (std::vector<float> (2048, 1.0f), rate);
+    Engine engine;
+    engine.setEngineRate (rate);
+    engine.setSource (sample.view());
+    engine.setDcBlockerEnabled (false);
+    auto p = cleanParams();
+    p.rateSrc = 1;
+    p.hz = 100.0;
+    p.hitEnvelope.releaseMs = 2.0f;
+    p.seqOn = true;
+    p.seqLen = 2;
+    p.steps[1].on = false;
+    engine.setParams (p);
+    engine.reset();
+
+    const auto out = render (engine, 640, 64, { noteOn (0, 60) });
+    CHECK (out.l[470] == 1.0f);
+    CHECK (out.l[510] > 0.0f);
+    CHECK (out.l[510] < 1.0f);
+    CHECK (out.l[600] == 0.0f);
+}
+
+TEST_CASE ("Cut replaces gated tails while Overlap lets them ring", "[engine][adsr]")
+{
+    constexpr double rate = 48000.0;
+    OwnedSource sample (std::vector<float> (4096, 1.0f), rate);
+    Engine engine;
+    engine.setEngineRate (rate);
+    engine.setSource (sample.view());
+    engine.setDcBlockerEnabled (false);
+    auto p = cleanParams();
+    p.rateSrc = 1;
+    p.hz = 100.0;
+    p.gate = 0.5;
+    p.hitEnvelope.releaseMs = 25.0f;
+
+    engine.setParams (p);
+    engine.reset();
+    CHECK (render (engine, 550, 64, { noteOn (0, 60) }).l[512] == 1.0f);
+    p.trigMode = 1;
+    engine.setParams (p);
+    engine.reset();
+    CHECK (render (engine, 550, 64, { noteOn (0, 60) }).l[512] > 1.0f);
+}
+
 namespace
 {
 constexpr double kPi = 3.14159265358979323846;
