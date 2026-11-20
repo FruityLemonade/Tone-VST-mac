@@ -4,6 +4,8 @@ XTONE repeatedly retriggers a sample, typically a kick drum, at rates well above
 
 See the [technical specification](docs/HANDOFF.md) and [design decisions](docs/DECISIONS.md) for project details.
 
+![Hammer Drill skin on the Rate page](docs/screenshots/hammer-drill.jpg)
+
 ## Installation on Windows
 
 1. Open the latest successful [Windows build](https://github.com/FruityLemonade/Tone-VST-mac/actions/workflows/build.yml) and download the **XTONE-win64** artifact.
