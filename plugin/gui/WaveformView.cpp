@@ -1,54 +1,53 @@
 #include "WaveformView.h"
 
+#include "HammerLookAndFeel.h"
+
 #include "../PluginProcessor.h"
+
+#include <array>
 
 using namespace juce;
 
 WaveformView::WaveformView (XtoneProcessor& p) : proc (p)
 {
-    equalCount.setRange (2, 64, 1);
-    equalCount.setValue (8, dontSendNotification);
-    equalCount.setTextBoxStyle (Slider::TextBoxLeft, false, 40, 22);
-    equalCount.setName ("Slice-Anzahl");
-
     sensitivity.setRange (0, 100, 1);
     sensitivity.setValue (50, dontSendNotification);
     sensitivity.setTextValueSuffix (" %");
-    sensitivity.setTextBoxStyle (Slider::TextBoxRight, false, 48, 22);
-    sensitivity.setName ("Empfindlichkeit");
-    sensitivityLabel.setText ("Empfindlichkeit", dontSendNotification);
-    detectionStatus.setFont (FontOptions (12.0f));
-    transientButton.setTooltip ("Erkennt Transienten im ganzen Sample und ersetzt die Slice-Marker.");
+    sensitivity.setTextBoxStyle (Slider::TextBoxRight, false, 42, 23);
+    sensitivity.setName ("Sensitivity");
+    sensitivityLabel.setText ("Sensitivity", dontSendNotification);
+    sensitivityLabel.setFont (hammer::font (12.5f));
+    sensitivityLabel.setBorderSize (BorderSize<int> (0));
 
-    zoomOutButton.setTooltip ("Verkleinern");
-    zoomInButton.setTooltip (String::fromUTF8 ("Vergrößern"));
-    resetZoomButton.setTooltip ("Ganzes Sample anzeigen");
-    scrollbar.setAutoHide (false);
-    scrollbar.setName ("Wellenform scrollen");
+    sampleName.setFont (hammer::font (16.0f, Font::bold));
+    sampleName.setBorderSize (BorderSize<int> (0, 9, 0, 9));
+    sampleName.setColour (Label::backgroundColourId, hammer::recess);
+    sampleName.setColour (Label::outlineColourId, hammer::edge);
+    status.setFont (hammer::font (12.5f));
+    status.setColour (Label::textColourId, hammer::muted);
+    status.setBorderSize (BorderSize<int> (0));
+
+    transientButton.setTooltip ("Detect transients in the entire sample and replace the slice markers.");
+    zoomOutButton.setTooltip ("Zoom out");
+    zoomInButton.setTooltip ("Zoom in");
+    resetZoomButton.setTooltip ("Show the entire sample");
+    zoomOutButton.setTitle ("Zoom out on waveform");
+    zoomInButton.setTitle ("Zoom in on waveform");
+    resetZoomButton.setTitle ("Show the entire sample");
+    sliceButton.setTooltip ("Create evenly spaced slices or clear the slice markers");
+    scrollbar.setAutoHide (true);
+    scrollbar.setName ("Scroll waveform");
     scrollbar.addListener (this);
 
-    for (auto* button : { &equalButton, &transientButton, &clearButton, &zoomOutButton, &zoomInButton, &resetZoomButton })
+    for (auto* button : { &loadSample, &normalize, &transientButton, &sliceButton, &zoomOutButton, &zoomInButton, &resetZoomButton })
         addAndMakeVisible (*button);
-    addAndMakeVisible (equalCount);
-    addAndMakeVisible (sensitivity);
-    addAndMakeVisible (sensitivityLabel);
-    addAndMakeVisible (detectionStatus);
-    addAndMakeVisible (scrollbar);
+    for (Component* component : std::array<Component*, 5> { &sampleName, &sensitivity, &sensitivityLabel, &status, &scrollbar })
+        addAndMakeVisible (*component);
 
-    equalButton.onClick = [this]
-    {
-        updateAsset();
-        if (asset == nullptr) return;
-        auto slices = asset->slices;
-        slices.setEqual ((int) equalCount.getValue());
-        proc.setMarkers (*asset, slices.getMarkers());
-    };
+    loadSample.onClick = [this] { chooseSample(); };
+    normalize.onClick = [this] { proc.normalizeSample(); };
     transientButton.onClick = [this] { startDetection(); };
-    clearButton.onClick = [this]
-    {
-        updateAsset();
-        if (asset != nullptr) proc.setMarkers (*asset, {});
-    };
+    sliceButton.onClick = [this] { showSliceMenu(); };
     zoomInButton.onClick = [this] { updateAsset(); zoomAt (2.0, 0.5); };
     zoomOutButton.onClick = [this] { updateAsset(); zoomAt (0.5, 0.5); };
     resetZoomButton.onClick = [this]
@@ -57,33 +56,104 @@ WaveformView::WaveformView (XtoneProcessor& p) : proc (p)
         if (asset != nullptr && asset->audio != nullptr) setViewport (0.0, (double) asset->audio->frames());
     };
 
-    updateAsset();
+    timerCallback();
     startTimerHz (30);
 }
 
-Rectangle<int> WaveformView::plotArea() const { return getLocalBounds().withTrimmedRight (170).reduced (2); }
-Rectangle<int> WaveformView::waveArea() const { return plotArea().withTrimmedBottom (12); }
+WaveformView::~WaveformView()
+{
+    if (sliceMenuOpen) PopupMenu::dismissAllActiveMenus();
+    scrollbar.removeListener (this);
+}
+
+bool WaveformView::usesTwoToolbarRows() const { return getWidth() < 535; }
+
+Rectangle<int> WaveformView::plotArea() const
+{
+    return getLocalBounds().reduced (13, 12).withTrimmedTop (41).withTrimmedBottom (usesTwoToolbarRows() ? 84 : 51);
+}
+
+Rectangle<int> WaveformView::waveArea() const { return plotArea().withTrimmedBottom (33); }
 
 void WaveformView::resized()
 {
+    auto content = getLocalBounds().reduced (13, 12);
+    auto sample = content.removeFromTop (32);
+    normalize.setBounds (sample.removeFromRight (104));
+    sample.removeFromRight (5);
+    loadSample.setBounds (sample.removeFromRight (108));
+    sampleName.setBounds (sample.withTrimmedRight (8));
+
     auto plot = plotArea();
-    scrollbar.setBounds (plot.removeFromBottom (12));
-    auto panel = getLocalBounds().removeFromRight (165).reduced (4);
-    auto equalRow = panel.removeFromTop (26);
-    equalButton.setBounds (equalRow.removeFromLeft (90));
-    equalCount.setBounds (equalRow.withTrimmedLeft (4));
-    panel.removeFromTop (4);
-    transientButton.setBounds (panel.removeFromTop (26));
-    sensitivityLabel.setBounds (panel.removeFromTop (17));
-    sensitivity.setBounds (panel.removeFromTop (23));
-    detectionStatus.setBounds (panel.removeFromTop (18));
-    clearButton.setBounds (panel.removeFromTop (26));
-    panel.removeFromTop (4);
-    auto zoomRow = panel.removeFromTop (26);
-    zoomOutButton.setBounds (zoomRow.removeFromLeft (36));
-    zoomRow.removeFromLeft (4);
-    zoomInButton.setBounds (zoomRow.removeFromLeft (36));
-    resetZoomButton.setBounds (zoomRow.withTrimmedLeft (4));
+    scrollbar.setBounds (plot.removeFromBottom (11));
+    status.setBounds (content.removeFromBottom (17));
+    auto toolbar = content.removeFromBottom (usesTwoToolbarRows() ? 63 : 30);
+    auto primary = toolbar.removeFromTop (30);
+    auto actions = usesTwoToolbarRows() ? toolbar.removeFromBottom (28) : primary.removeFromRight (181);
+    transientButton.setBounds (primary.removeFromLeft (92));
+    primary.removeFromLeft (7);
+    sensitivityLabel.setBounds (primary.removeFromLeft (86));
+    sensitivity.setBounds (primary.withTrimmedRight (7));
+    sliceButton.setBounds (actions.removeFromLeft (62));
+    actions.removeFromLeft (8);
+    resetZoomButton.setBounds (actions.removeFromLeft (49));
+    actions.removeFromLeft (3);
+    zoomOutButton.setBounds (actions.removeFromLeft (27));
+    actions.removeFromLeft (3);
+    zoomInButton.setBounds (actions.removeFromLeft (27));
+}
+
+void WaveformView::chooseSample()
+{
+    if (chooser != nullptr) return;
+    chooser = std::make_unique<FileChooser> ("Load Sample", File(), "*.wav;*.aif;*.aiff;*.flac;*.ogg;*.mp3");
+    chooser->launchAsync (FileBrowserComponent::openMode | FileBrowserComponent::canSelectFiles,
+                          [self = SafePointer<WaveformView> (this)] (const FileChooser& dialog)
+    {
+        if (self == nullptr) return;
+        const auto file = dialog.getResult();
+        self->chooser.reset();
+        if (file.existsAsFile()) self->proc.loadSampleFile (file);
+    });
+}
+
+void WaveformView::showSliceMenu()
+{
+    updateAsset();
+    if (asset == nullptr || sliceMenuOpen || ! isShowing()) return;
+
+    PopupMenu menu, equal;
+    menu.setLookAndFeel (&getLookAndFeel());
+    for (int first = 2; first <= 64;)
+    {
+        const int last = jmin (64, (first + 7) / 8 * 8);
+        PopupMenu counts;
+        for (int count = first; count <= last; ++count)
+            counts.addItem (count, String (count) + " Slices");
+        equal.addSubMenu (String (first) + String::fromUTF8 ("–") + String (last), counts);
+        first = last + 1;
+    }
+    menu.addSubMenu ("Slice Evenly", equal);
+    constexpr int clearMarkers = 1;
+    menu.addItem (clearMarkers, "Clear All Markers", ! asset->slices.getMarkers().empty());
+    sliceMenuOpen = true;
+    menu.showMenuAsync (PopupMenu::Options().withTargetComponent (&sliceButton),
+                        [self = SafePointer<WaveformView> (this), target = asset] (int choice)
+    {
+        if (self == nullptr) return;
+        self->sliceMenuOpen = false;
+        if (choice == 0) return;
+        if (choice == clearMarkers)
+        {
+            self->proc.setMarkers (*target, {});
+        }
+        else
+        {
+            auto slices = target->slices;
+            slices.setEqual (choice);
+            self->proc.setMarkers (*target, slices.getMarkers());
+        }
+    });
 }
 
 void WaveformView::updateAsset()
@@ -96,10 +166,33 @@ void WaveformView::updateAsset()
     dragIndex = -1;
     if (asset == nullptr || asset->audio != previousAudio)
     {
-        detectionStatus.setText ({}, dontSendNotification);
+        detectionMessage.clear();
         setViewport (0.0, asset != nullptr && asset->audio != nullptr ? (double) asset->audio->frames() : 0.0);
     }
+    const bool hasAudio = asset != nullptr && asset->audio != nullptr;
+    normalize.setEnabled (hasAudio && ! asset->normalized);
+    sliceButton.setEnabled (hasAudio);
+    sampleName.setText (hasAudio ? asset->name : "No Sample", dontSendNotification);
+    sampleName.setTooltip (hasAudio ? asset->name : String());
+    updateStatus();
     repaint();
+}
+
+void WaveformView::updateStatus()
+{
+    auto message = proc.getStatusMessage();
+    if (message.isEmpty()) message = detectionMessage;
+    if (message.isEmpty() && asset != nullptr)
+    {
+        if (asset->normalized) message = "Normalized";
+        if (asset->fileBytes != nullptr)
+        {
+            if (message.isNotEmpty()) message << String::fromUTF8 ("  ·  ");
+            message << "Embedded in project";
+        }
+    }
+    status.setText (message, dontSendNotification);
+    status.setTooltip (message);
 }
 
 void WaveformView::startDetection()
@@ -108,7 +201,8 @@ void WaveformView::startDetection()
     if (asset == nullptr || asset->audio == nullptr) return;
     transientButton.setEnabled (false);
     sensitivity.setEnabled (false);
-    detectionStatus.setText ("Analysiere ...", dontSendNotification);
+    detectionMessage = String::fromUTF8 ("Analyzing…");
+    updateStatus();
 
     proc.detectTransients (asset, sensitivity.getValue() * 0.01,
                            [view = Component::SafePointer<WaveformView> (this)] (std::optional<int> count)
@@ -117,8 +211,8 @@ void WaveformView::startDetection()
         view->updateAsset();
         view->transientButton.setEnabled (true);
         view->sensitivity.setEnabled (true);
-        const String status = ! count ? "Analyse verworfen" : *count == 0 ? "Keine Transienten" : "";
-        view->detectionStatus.setText (status, dontSendNotification);
+        view->detectionMessage = ! count ? "Analysis discarded" : *count == 0 ? "No transients found" : "";
+        view->updateStatus();
     });
 }
 
@@ -172,7 +266,7 @@ void WaveformView::paintSignal (Graphics& g, Rectangle<int> w) const
     const int frames = audio.buffer.getNumSamples();
     const double framesPerPixel = visibleLength / w.getWidth();
     const float midY = (float) w.getCentreY(), halfH = (float) w.getHeight() * 0.48f;
-    g.setColour (Colours::lightgreen);
+    g.setColour (hammer::yellow);
 
     if (framesPerPixel < 1.0)
     {
@@ -214,58 +308,104 @@ void WaveformView::paintSignal (Graphics& g, Rectangle<int> w) const
     }
 }
 
+void WaveformView::paintTimeline (Graphics& g, Rectangle<int> w) const
+{
+    const auto& audio = *asset->audio;
+    const int segments = jlimit (2, 5, w.getWidth() / 105);
+    const double lengthSeconds = visibleLength / audio.sampleRate;
+    g.setColour (hammer::muted);
+    g.setFont (hammer::mono (11.0f));
+    for (int i = 0; i <= segments; ++i)
+    {
+        const int labelWidth = w.getWidth() / segments;
+        const double fraction = (double) i / (double) segments;
+        const int x = w.getX() + roundToInt (fraction * w.getWidth());
+        const int left = jlimit (w.getX(), w.getRight() - labelWidth, x - labelWidth / 2);
+        const auto alignment = i == 0 ? Justification::centredLeft : i == segments ? Justification::centredRight : Justification::centred;
+        const double time = visibleStart / audio.sampleRate + fraction * lengthSeconds;
+        g.drawText (String (time, lengthSeconds < 0.02 ? 4 : 3) + " s", left, w.getBottom(), labelWidth, 20, alignment);
+    }
+}
+
 void WaveformView::paint (Graphics& g)
 {
+    hammer::drawRecess (g, getLocalBounds().toFloat());
     const auto w = waveArea();
-    g.setColour (Colours::black.withAlpha (0.6f));
-    g.fillRect (w);
-    const Graphics::ScopedSaveState state (g);
-    if (visibleLength <= 0.0 || ! g.reduceClipRegion (w)) return;
+    g.setColour (Colour (0xff101210));
+    g.fillRoundedRectangle (w.toFloat(), 5.0f);
+    g.setColour (hammer::edge);
+    g.drawRoundedRectangle (w.toFloat().reduced (0.5f), 5.0f, 1.0f);
+    if (visibleLength <= 0.0 || w.isEmpty())
+    {
+        g.setColour (hammer::muted);
+        g.setFont (hammer::font (14.0f));
+        g.drawText ("Drop an audio file here", w, Justification::centred);
+        return;
+    }
 
-    const auto& tel = proc.telemetry();
+    paintTimeline (g, w);
+    const Graphics::ScopedSaveState state (g);
+    if (! g.reduceClipRegion (w.reduced (1))) return;
+
     const auto& markers = dragIndex >= 0 ? dragSlices.getMarkers() : asset->slices.getMarkers();
     const int numSlices = (int) markers.size() + 1;
-    const int currentSlice = jlimit (0, numSlices - 1, tel.slice.load());
+    const int currentSlice = jlimit (0, numSlices - 1, plotState.slice);
     const auto frames = (double) asset->audio->frames();
     const double sliceStart = currentSlice == 0 ? 0.0 : (double) markers[(size_t) currentSlice - 1];
     const double sliceEnd = currentSlice == numSlices - 1 ? frames : (double) markers[(size_t) currentSlice];
     const auto xInPlot = [this, w] (double frame) { return jlimit ((float) w.getX(), (float) w.getRight(), frameToX (frame)); };
 
-    const float x0 = xInPlot (sliceStart), x1 = xInPlot (sliceEnd);
-    g.setColour (Colours::orange.withAlpha (0.12f));
-    g.fillRect (x0, (float) w.getY(), x1 - x0, (float) w.getHeight());
+    if (numSlices > 1)
+    {
+        const float x0 = xInPlot (sliceStart), x1 = xInPlot (sliceEnd);
+        g.setColour (hammer::yellow.withAlpha (0.15f));
+        g.fillRect (x0, (float) w.getY(), x1 - x0, (float) w.getHeight());
+    }
 
-    const double scan = proc.apvts.getRawParameterValue ("scan")->load() * 0.01;
-    const double length = proc.apvts.getRawParameterValue ("length")->load() * 0.01 * (sliceEnd - sliceStart);
+    g.setColour (hammer::edge.withAlpha (0.5f));
+    for (int i = 1; i <= 3; ++i)
+        g.drawHorizontalLine (w.getY() + i * w.getHeight() / 4, (float) w.getX(), (float) w.getRight());
+
+    const double scan = plotState.scan * 0.01;
+    const double length = plotState.length * 0.01 * (sliceEnd - sliceStart);
     const double windowStart = sliceStart + scan * (sliceEnd - sliceStart - length);
     const float sx0 = xInPlot (windowStart), sx1 = xInPlot (windowStart + length);
-    g.setColour (Colours::orange.withAlpha (0.18f));
-    g.fillRect (sx0, (float) w.getY() + (float) w.getHeight() * 0.85f, sx1 - sx0, (float) w.getHeight() * 0.15f);
+    g.setColour (hammer::yellow.withAlpha (0.35f));
+    g.fillRect (sx0, (float) w.getBottom() - 4.0f, sx1 - sx0, 3.0f);
 
     paintSignal (g, w);
 
     const double visibleEnd = visibleStart + visibleLength;
-    g.setColour (Colours::yellow);
+    constexpr float dashes[] { 4.0f, 3.0f };
     for (size_t i = 0; i < markers.size(); ++i)
     {
         const auto frame = (double) markers[i];
         if (frame < visibleStart || frame >= visibleEnd) continue;
         const float x = frameToX (frame);
-        g.drawLine (x, (float) w.getY(), x, (float) w.getBottom(), 1.5f);
-        g.drawText (String ((int) i + 1), (int) x + 2, w.getY() + 2, 30, 14, Justification::left);
+        const auto handle = Rectangle<float> (12.0f, 15.0f).withCentre ({ x, (float) w.getBottom() - 10.0f });
+        g.setColour (hammer::text.withAlpha (0.72f));
+        g.drawDashedLine ({ x, (float) w.getY(), x, handle.getY() }, dashes, 2, 1.0f);
+        g.setColour ((int) i == dragIndex ? hammer::yellow : hammer::muted);
+        g.fillRoundedRectangle (handle, 2.5f);
+        g.setColour (hammer::ink);
+        for (int offset : { -2, 0, 2 })
+            g.drawVerticalLine (roundToInt (x) + offset, handle.getY() + 4.0f, handle.getBottom() - 4.0f);
     }
 
-    const double position = tel.playPos.load() * frames;
+    const double position = plotState.position * frames;
     if (position >= visibleStart && position < visibleEnd)
     {
-        g.setColour (Colours::white);
+        g.setColour (hammer::text);
         const float x = frameToX (position);
         g.drawLine (x, (float) w.getY(), x, (float) w.getBottom(), 1.0f);
     }
 
-    g.setColour (Colours::white.withAlpha (0.8f));
-    g.setFont (FontOptions (13.0f));
-    g.drawText (asset->name + "  (" + String (numSlices) + " Slices)", w.reduced (6), Justification::bottomLeft);
+    const auto sliceReadout = w.reduced (8).removeFromTop (19).removeFromRight (115);
+    g.setColour (hammer::recess.withAlpha (0.88f));
+    g.fillRoundedRectangle (sliceReadout.toFloat(), 3.0f);
+    g.setColour (hammer::yellow);
+    g.setFont (hammer::mono (12.0f, Font::bold));
+    g.drawText ("SLICE " + String (currentSlice + 1) + "/" + String (numSlices), sliceReadout, Justification::centred);
 }
 
 void WaveformView::mouseDown (const MouseEvent& e)
@@ -273,7 +413,7 @@ void WaveformView::mouseDown (const MouseEvent& e)
     updateAsset();
     if (visibleLength <= 0.0 || ! waveArea().contains (e.getPosition())) return;
     const double frame = xToFrame (e.position.x);
-    const double tolerance = 4.0 * visibleLength / waveArea().getWidth();
+    const double tolerance = 6.0 * visibleLength / waveArea().getWidth();
     const int index = asset->slices.findMarker (std::llround (frame), (int64_t) std::ceil (tolerance));
     if (index < 0) return;
     const auto marker = (double) asset->slices.getMarkers()[(size_t) index];
@@ -337,10 +477,16 @@ void WaveformView::mouseWheelMove (const MouseEvent& e, const MouseWheelDetails&
 void WaveformView::timerCallback()
 {
     updateAsset();
-    const float pos = proc.telemetry().playPos.load();
-    if (std::abs (pos - lastPos) > 1.0e-6f || proc.telemetry().active.load())
+    updateStatus();
+    const auto& telemetry = proc.telemetry();
+    const auto raw = [this] (const char* id) { return proc.apvts.getRawParameterValue (id)->load(); };
+    const auto active = telemetry.active.load();
+    const PlotState next { active ? telemetry.playPos.load() : -1.0f, raw ("scan"), raw ("length"),
+                           active ? telemetry.slice.load() : (int) raw ("slice") };
+    if (next.slice != plotState.slice || ! approximatelyEqual (next.position, plotState.position)
+        || ! approximatelyEqual (next.scan, plotState.scan) || ! approximatelyEqual (next.length, plotState.length))
     {
-        lastPos = pos;
-        repaint();
+        plotState = next;
+        repaint (waveArea());
     }
 }

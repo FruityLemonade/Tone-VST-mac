@@ -1,5 +1,7 @@
 #include "ParamPanel.h"
 
+#include "HammerLookAndFeel.h"
+
 using namespace juce;
 
 namespace
@@ -14,7 +16,8 @@ public:
     {
         label.setText (p.getName (64), dontSendNotification);
         label.setJustificationType (Justification::centred);
-        label.setFont (FontOptions (13.0f));
+        label.setFont (hammer::font (13.0f));
+        label.setBorderSize (BorderSize<int> (1, 1, 1, 1));
         addAndMakeVisible (label);
 
         const String id = p.getParameterID();
@@ -22,19 +25,22 @@ public:
         {
             combo = std::make_unique<ComboBox>();
             combo->addItemList (choice->choices, 1);
+            combo->setTitle (label.getText());
             addAndMakeVisible (*combo);
             comboAtt = std::make_unique<APVTS::ComboBoxAttachment> (state, id, *combo);
         }
         else if (dynamic_cast<AudioParameterBool*> (&p) != nullptr)
         {
-            toggle = std::make_unique<ToggleButton> ("an");
+            toggle = std::make_unique<ToggleButton> ("On");
+            toggle->setTitle (label.getText());
             addAndMakeVisible (*toggle);
             buttonAtt = std::make_unique<APVTS::ButtonAttachment> (state, id, *toggle);
         }
         else
         {
             slider = std::make_unique<Slider> (Slider::RotaryHorizontalVerticalDrag, Slider::TextBoxBelow);
-            slider->setTextBoxStyle (Slider::TextBoxBelow, false, 110, 18);
+            slider->setTextBoxStyle (Slider::TextBoxBelow, false, 90, 22);
+            slider->setName (label.getText());
             slider->setPopupDisplayEnabled (false, false, nullptr);
             addAndMakeVisible (*slider);
             sliderAtt = std::make_unique<APVTS::SliderAttachment> (state, id, *slider);
@@ -43,9 +49,18 @@ public:
         }
     }
 
+    void paint (Graphics& g) override
+    {
+        const auto card = getLocalBounds().toFloat().reduced (2.5f);
+        g.setColour (hammer::recess);
+        g.fillRoundedRectangle (card, 5.0f);
+        g.setColour (hammer::edge);
+        g.drawRoundedRectangle (card, 5.0f, 1.0f);
+    }
+
     void resized() override
     {
-        auto r = getLocalBounds().reduced (4);
+        auto r = getLocalBounds().reduced (8, 6);
         label.setBounds (r.removeFromTop (30));
         if (slider) slider->setBounds (r);
         if (combo) combo->setBounds (r.withSizeKeepingCentre (r.getWidth(), 24));
@@ -74,12 +89,16 @@ public:
 
     void layoutFor (int width)
     {
-        const int cw = 120, ch = 120;
-        const int cols = jmax (1, width / cw);
+        constexpr int ch = 117;
+        const int cols = jlimit (1, 5, width / 103);
         const int rows = (controls.size() + cols - 1) / cols;
         setSize (width, jmax (ch, rows * ch));
         for (int i = 0; i < controls.size(); ++i)
-            controls[i]->setBounds ((i % cols) * cw, (i / cols) * ch, cw, ch);
+        {
+            const int col = i % cols;
+            const int x = col * width / cols;
+            controls[i]->setBounds (x, (i / cols) * ch, (col + 1) * width / cols - x, ch);
+        }
     }
 
 private:
@@ -109,10 +128,28 @@ private:
 
 ParamPanel::ParamPanel (AudioProcessor& p, APVTS& state)
 {
-    const auto bg = getLookAndFeel().findColour (ResizableWindow::backgroundColourId);
-    for (auto* g : p.getParameterTree().getSubgroups (false))
-        tabs.addTab (g->getName(), bg, new ScrollingPage (*g, state), true);
-    addAndMakeVisible (tabs);
+    const auto groups = p.getParameterTree().getSubgroups (false);
+    for (int index = 1; index < groups.size(); ++index)
+        addChildComponent (pages.add (new ScrollingPage (*groups[index], state)));
 }
 
-void ParamPanel::resized() { tabs.setBounds (getLocalBounds()); }
+void ParamPanel::showGroup (int index)
+{
+    const int next = index - 1;
+    if (next == selected) return;
+    if (auto* current = pages[selected]) current->setVisible (false);
+    selected = next;
+    if (auto* page = pages[selected]) page->setVisible (true);
+    resized();
+}
+
+void ParamPanel::paint (Graphics& g)
+{
+    hammer::drawRecess (g, getLocalBounds().toFloat());
+}
+
+void ParamPanel::resized()
+{
+    if (auto* page = pages[selected])
+        page->setBounds (getLocalBounds().reduced (8));
+}

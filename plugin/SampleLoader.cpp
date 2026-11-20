@@ -68,12 +68,12 @@ namespace
         std::unique_ptr<AudioFormatReader> reader (fm.createReaderFor (std::move (in)));
         if (reader == nullptr)
         {
-            error = "Format nicht unterstuetzt";
+            error = "Unsupported audio format";
             return nullptr;
         }
         if (reader->lengthInSamples <= 0)
         {
-            error = "Datei ist leer";
+            error = "Audio file is empty";
             return nullptr;
         }
         const int64 frames = std::min (reader->lengthInSamples, kMaxFrames);
@@ -81,7 +81,7 @@ namespace
         AudioBuffer<float> tmp (numCh, (int) frames);
         if (! reader->read (&tmp, 0, (int) frames, 0, true, numCh >= 2))
         {
-            error = "Lesefehler";
+            error = "Could not decode audio";
             return nullptr;
         }
         return finish (makeAudio (tmp, numCh, reader->sampleRate));
@@ -158,7 +158,7 @@ namespace loader
         AudioBuffer<float> tmp (1, (int) kick.size());
         tmp.copyFrom (0, 0, kick.data(), (int) kick.size());
         auto a = finish (makeAudio (tmp, 1, 48000.0));
-        a->name = "Default-Kick";
+        a->name = "Default Kick";
         a->isDefault = true;
         return a;
     }
@@ -177,7 +177,7 @@ namespace loader
     {
         if (! f.existsAsFile())
         {
-            error = "Datei nicht gefunden: " + f.getFullPathName();
+            error = "File not found: " + f.getFullPathName();
             return nullptr;
         }
         if ((size_t) f.getSize() <= SampleAsset::kMaxEmbedBytes)
@@ -185,7 +185,7 @@ namespace loader
             auto bytes = std::make_shared<MemoryBlock>();
             if (! f.loadFileAsData (*bytes))
             {
-                error = "Datei kann nicht gelesen werden";
+                error = "Could not read file";
                 return nullptr;
             }
             return fromMemory (bytes, f.getFileName(), f.getFullPathName(), error);
@@ -215,7 +215,7 @@ namespace loader
         else if (path.isNotEmpty())
         {
             a = fromFile (File (path), error);
-            if (a == nullptr) error = "Sample fehlt: " + path;
+            if (a == nullptr) error = "Missing sample: " + path;
         }
         if (a == nullptr) return nullptr;
         if ((bool) t.getProperty ("normalized", false)) a = normalizedCopy (*a);

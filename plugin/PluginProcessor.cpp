@@ -211,7 +211,7 @@ void XtoneProcessor::loadSampleFile (const File& f)
 {
     {
         const ScopedLock sl (guiLock);
-        statusMessage = "Lade " + f.getFileName() + " ...";
+        statusMessage = "Loading " + f.getFileName() + String::fromUTF8 ("…");
     }
     ++assetVersion;
     std::weak_ptr<int> token = lifetimeToken;
@@ -224,9 +224,9 @@ void XtoneProcessor::loadSampleFile (const File& f)
             if (token.expired()) return;
             {
                 const ScopedLock sl (guiLock);
-                statusMessage = asset != nullptr ? String() : "Fehler: " + error;
+                statusMessage = asset != nullptr ? String() : "Error: " + error;
                 if (asset != nullptr && asset->fileBytes == nullptr)
-                    statusMessage = "Hinweis: Datei > 32 MB, wird nur per Pfad gespeichert";
+                    statusMessage = "Sample exceeds 32 MB. Only its file path will be saved.";
             }
             if (asset != nullptr) publish (asset);
             else ++assetVersion;

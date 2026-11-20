@@ -54,8 +54,8 @@ namespace
 
 StringArray groupOrder()
 {
-    return { "Rate", "MIDI", "Snap", "Retrigger", "Sample", "A/B", "Rampe", "LFO 1", "LFO 2",
-             "Unison", "Sequencer", U ("Hüllkurve"), "Ausgang" };
+    return { "Rate", "MIDI", "Snap", "Retrigger", "Sample", "A/B", "Ramp", "LFO 1", "LFO 2",
+             "Unison", "Sequencer", "Envelope", "Output" };
 }
 
 AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
@@ -67,57 +67,57 @@ AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
     // ---- Rate
     {
         auto g = std::make_unique<AudioProcessorParameterGroup> ("rate", "Rate", "|");
-        g->addChild (std::make_unique<APC> (pid ("rate_src"), "Rate-Quelle", StringArray { "BPM", "Hz", "Host x" }, 0));
+        g->addChild (std::make_unique<APC> (pid ("rate_src"), "Rate Source", StringArray { "BPM", "Hz", "Host x" }, 0));
         g->addChild (std::make_unique<APF> (
-            pid ("bpm"), "Plugin-BPM", logRange (1.0f, 60000.0f), 500.0f,
+            pid ("bpm"), "Plugin BPM", logRange (1.0f, 60000.0f), 500.0f,
             AudioParameterFloatAttributes().withLabel ("BPM").withStringFromValueFunction (
                 [] (float v, int) { return String (v, v < 100.0f ? 2 : 1) + " BPM"; })));
-        g->addChild (std::make_unique<APC> (pid ("division"), "Teiler", divisions, 4));
-        g->addChild (std::make_unique<APC> (pid ("div_mod"), "Teiler-Art", StringArray { "Gerade", "Triole", "Punktiert" }, 0));
+        g->addChild (std::make_unique<APC> (pid ("division"), "Division", divisions, 4));
+        g->addChild (std::make_unique<APC> (pid ("div_mod"), "Division Type", StringArray { "Straight", "Triplet", "Dotted" }, 0));
         g->addChild (std::make_unique<APF> (
             pid ("hz"), "Rate Hz", logRange (0.1f, 4000.0f), 33.33f,
             AudioParameterFloatAttributes().withLabel ("Hz").withStringFromValueFunction (
                 [] (float v, int) { return String (v, 2) + " Hz (" + String (xt::noteName (xt::hzToNote (v), false)) + ")"; })));
-        g->addChild (std::make_unique<APC> (pid ("host_mult"), "Host-Multiplikator",
+        g->addChild (std::make_unique<APC> (pid ("host_mult"), "Host Multiplier",
                                             StringArray { "x1", "x2", "x4", "x8", "x16", "x32", "x64", "x128" }, 0));
-        g->addChild (std::make_unique<APB> (pid ("host_lock"), "Host-Phasenlock", true));
-        g->addChild (std::make_unique<APF> (pid ("rate_smooth"), U ("Rate-Glättung"), skewRange (0.0f, 500.0f, 20.0f), 2.0f, unitAttr ("ms", 1)));
+        g->addChild (std::make_unique<APB> (pid ("host_lock"), "Host Phase Lock", true));
+        g->addChild (std::make_unique<APF> (pid ("rate_smooth"), "Rate Smoothing", skewRange (0.0f, 500.0f, 20.0f), 2.0f, unitAttr ("ms", 1)));
         layout.add (std::move (g));
     }
     // ---- MIDI
     {
         auto g = std::make_unique<AudioProcessorParameterGroup> ("midi", "MIDI", "|");
-        g->addChild (std::make_unique<APC> (pid ("midi_mode"), "MIDI-Modus", StringArray { "Pitch", "Slice" }, 0));
-        g->addChild (std::make_unique<APC> (pid ("key_mode"), "Keytrack", StringArray { "Relativ", "Absolut" }, 0));
-        g->addChild (std::make_unique<API> (pid ("key_root"), "Grundnote", 0, 127, 60, noteIntAttr()));
-        g->addChild (std::make_unique<API> (pid ("slice_base"), "Slice-Startnote", 0, 127, 60, noteIntAttr()));
-        g->addChild (std::make_unique<APF> (pid ("transpose"), "Transponieren", NormalisableRange<float> (-48.0f, 48.0f, 1.0f), 0.0f, unitAttr ("st", 0)));
-        g->addChild (std::make_unique<APF> (pid ("fine"), "Feinstimmung", NormalisableRange<float> (-100.0f, 100.0f, 0.1f), 0.0f, unitAttr ("ct", 1)));
-        g->addChild (std::make_unique<APF> (pid ("a4_ref"), "Stimmton A4", NormalisableRange<float> (400.0f, 480.0f, 0.01f), 440.0f, unitAttr ("Hz", 2)));
+        g->addChild (std::make_unique<APC> (pid ("midi_mode"), "MIDI Mode", StringArray { "Pitch", "Slice" }, 0));
+        g->addChild (std::make_unique<APC> (pid ("key_mode"), "Key Tracking", StringArray { "Relative", "Absolute" }, 0));
+        g->addChild (std::make_unique<API> (pid ("key_root"), "Root Note", 0, 127, 60, noteIntAttr()));
+        g->addChild (std::make_unique<API> (pid ("slice_base"), "Slice Base Note", 0, 127, 60, noteIntAttr()));
+        g->addChild (std::make_unique<APF> (pid ("transpose"), "Transpose", NormalisableRange<float> (-48.0f, 48.0f, 1.0f), 0.0f, unitAttr ("st", 0)));
+        g->addChild (std::make_unique<APF> (pid ("fine"), "Fine Tune", NormalisableRange<float> (-100.0f, 100.0f, 0.1f), 0.0f, unitAttr ("ct", 1)));
+        g->addChild (std::make_unique<APF> (pid ("a4_ref"), "A4 Reference", NormalisableRange<float> (400.0f, 480.0f, 0.01f), 440.0f, unitAttr ("Hz", 2)));
         g->addChild (std::make_unique<APF> (pid ("glide"), "Glide", skewRange (0.0f, 5000.0f, 200.0f), 0.0f, unitAttr ("ms", 1)));
-        g->addChild (std::make_unique<APB> (pid ("glide_legato"), "Glide nur legato", true));
-        g->addChild (std::make_unique<APF> (pid ("pb_range"), "Pitchbend-Bereich", NormalisableRange<float> (0.0f, 48.0f, 1.0f), 12.0f, unitAttr ("st", 0)));
-        g->addChild (std::make_unique<APB> (pid ("phase_reset"), "Phase-Reset bei Note", true));
-        g->addChild (std::make_unique<APF> (pid ("vel_sens"), "Velocity-Empfindl.", NormalisableRange<float> (0.0f, 100.0f, 0.1f), 50.0f, unitAttr ("%", 1)));
+        g->addChild (std::make_unique<APB> (pid ("glide_legato"), "Legato Glide Only", true));
+        g->addChild (std::make_unique<APF> (pid ("pb_range"), "Pitch Bend Range", NormalisableRange<float> (0.0f, 48.0f, 1.0f), 12.0f, unitAttr ("st", 0)));
+        g->addChild (std::make_unique<APB> (pid ("phase_reset"), "Reset Phase on Note", true));
+        g->addChild (std::make_unique<APF> (pid ("vel_sens"), "Velocity Sensitivity", NormalisableRange<float> (0.0f, 100.0f, 0.1f), 50.0f, unitAttr ("%", 1)));
         layout.add (std::move (g));
     }
     // ---- Snap
     {
         auto g = std::make_unique<AudioProcessorParameterGroup> ("snap", "Snap", "|");
-        g->addChild (std::make_unique<APC> (pid ("snap_mode"), "Tune-Snap", StringArray { "Aus", "Basis", "Alles" }, 0));
-        g->addChild (std::make_unique<APC> (pid ("snap_scale"), "Skala",
-                                            StringArray { "Chromatisch", "Dur", "Moll", "Harm. Moll", "Phrygisch", "Moll-Penta", "Nur Grundton" }, 0));
-        g->addChild (std::make_unique<APC> (pid ("snap_root"), "Grundton",
+        g->addChild (std::make_unique<APC> (pid ("snap_mode"), "Tune Snap", StringArray { "Off", "Base", "All" }, 0));
+        g->addChild (std::make_unique<APC> (pid ("snap_scale"), "Scale",
+                                            StringArray { "Chromatic", "Major", "Minor", "Harm. Minor", "Phrygian", "Minor Pent.", "Root Only" }, 0));
+        g->addChild (std::make_unique<APC> (pid ("snap_root"), "Scale Root",
                                             StringArray { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" }, 0));
         layout.add (std::move (g));
     }
     // ---- Retrigger
     {
         auto g = std::make_unique<AudioProcessorParameterGroup> ("retrigger", "Retrigger", "|");
-        g->addChild (std::make_unique<APC> (pid ("trig_mode"), "Modus", StringArray { "Cut", "Overlap" }, 0));
+        g->addChild (std::make_unique<APC> (pid ("trig_mode"), "Mode", StringArray { "Cut", "Overlap" }, 0));
         g->addChild (std::make_unique<APF> (pid ("declick"), "Declick", NormalisableRange<float> (0.0f, 5.0f, 0.01f), 0.0f, unitAttr ("ms", 2)));
         g->addChild (std::make_unique<APF> (pid ("gate"), "Gate", NormalisableRange<float> (1.0f, 100.0f, 0.1f), 100.0f, unitAttr ("%", 1)));
-        g->addChild (std::make_unique<API> (pid ("voices"), "Overlap-Stimmen", 1, 32, 8));
+        g->addChild (std::make_unique<API> (pid ("voices"), "Overlap Voices", 1, 32, 8));
         g->addChild (std::make_unique<APF> (pid ("jitter"), "Jitter", NormalisableRange<float> (0.0f, 100.0f, 0.1f), 0.0f, unitAttr ("%", 1)));
         layout.add (std::move (g));
     }
@@ -125,21 +125,21 @@ AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
     {
         auto g = std::make_unique<AudioProcessorParameterGroup> ("sample", "Sample", "|");
         g->addChild (std::make_unique<API> (pid ("slice"), "Slice", 0, 127, 0));
-        g->addChild (std::make_unique<APF> (pid ("scan"), "Start-Scan", NormalisableRange<float> (0.0f, 100.0f, 0.01f), 0.0f, unitAttr ("%", 2)));
-        g->addChild (std::make_unique<APF> (pid ("length"), U ("Länge"), NormalisableRange<float> (1.0f, 100.0f, 0.01f), 100.0f, unitAttr ("%", 2)));
+        g->addChild (std::make_unique<APF> (pid ("scan"), "Start Scan", NormalisableRange<float> (0.0f, 100.0f, 0.01f), 0.0f, unitAttr ("%", 2)));
+        g->addChild (std::make_unique<APF> (pid ("length"), "Length", NormalisableRange<float> (1.0f, 100.0f, 0.01f), 100.0f, unitAttr ("%", 2)));
         g->addChild (std::make_unique<APB> (pid ("reverse"), "Reverse", false));
         g->addChild (std::make_unique<APC> (pid ("interp"), "Interpolation", StringArray { "Hermite", "Linear", "Raw" }, 0));
         g->addChild (std::make_unique<APB> (pid ("mono"), "Mono", true));
-        g->addChild (std::make_unique<APF> (pid ("s_pitch"), "Sample-Pitch", NormalisableRange<float> (-48.0f, 48.0f, 0.01f), 0.0f, unitAttr ("st", 2)));
-        g->addChild (std::make_unique<APF> (pid ("s_fine"), "Sample-Fein", NormalisableRange<float> (-100.0f, 100.0f, 0.1f), 0.0f, unitAttr ("ct", 1)));
-        g->addChild (std::make_unique<APF> (pid ("penv_amt"), "Pitch-Env Menge", NormalisableRange<float> (-48.0f, 48.0f, 0.01f), 0.0f, unitAttr ("st", 2)));
-        g->addChild (std::make_unique<APF> (pid ("penv_decay"), "Pitch-Env Decay", skewRange (0.1f, 2000.0f, 100.0f), 50.0f, unitAttr ("ms", 1)));
+        g->addChild (std::make_unique<APF> (pid ("s_pitch"), "Sample Pitch", NormalisableRange<float> (-48.0f, 48.0f, 0.01f), 0.0f, unitAttr ("st", 2)));
+        g->addChild (std::make_unique<APF> (pid ("s_fine"), "Sample Fine Tune", NormalisableRange<float> (-100.0f, 100.0f, 0.1f), 0.0f, unitAttr ("ct", 1)));
+        g->addChild (std::make_unique<APF> (pid ("penv_amt"), "Pitch Env Amount", NormalisableRange<float> (-48.0f, 48.0f, 0.01f), 0.0f, unitAttr ("st", 2)));
+        g->addChild (std::make_unique<APF> (pid ("penv_decay"), "Pitch Env Decay", skewRange (0.1f, 2000.0f, 100.0f), 50.0f, unitAttr ("ms", 1)));
         layout.add (std::move (g));
     }
     // ---- A/B
     {
         auto g = std::make_unique<AudioProcessorParameterGroup> ("ab", "A/B", "|");
-        g->addChild (std::make_unique<APC> (pid ("ab_mode"), "A/B-Modus", StringArray { "Aus", "AB", "AAB", "ABB", "Zufall" }, 0));
+        g->addChild (std::make_unique<APC> (pid ("ab_mode"), "A/B Mode", StringArray { "Off", "AB", "AAB", "ABB", "Random" }, 0));
         g->addChild (std::make_unique<API> (pid ("ab_slice"), "Slice B", 0, 127, 1));
         g->addChild (std::make_unique<APF> (pid ("ab_pitch"), "Pitch B", NormalisableRange<float> (-24.0f, 24.0f, 0.01f), 0.0f, unitAttr ("st", 2)));
         g->addChild (std::make_unique<APF> (pid ("ab_gain"), "Gain B", NormalisableRange<float> (-24.0f, 6.0f, 0.1f), 0.0f, unitAttr ("dB", 1)));
@@ -147,14 +147,14 @@ AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
     }
     // ---- Ramp
     {
-        auto g = std::make_unique<AudioProcessorParameterGroup> ("ramp", "Rampe", "|");
-        g->addChild (std::make_unique<APB> (pid ("ramp_on"), "Rampe an", false));
-        g->addChild (std::make_unique<APF> (pid ("ramp_start"), "Start", NormalisableRange<float> (-8.0f, 8.0f, 0.01f), -2.0f, unitAttr ("Okt.", 2)));
-        g->addChild (std::make_unique<APF> (pid ("ramp_end"), "Ende", NormalisableRange<float> (-8.0f, 8.0f, 0.01f), 0.0f, unitAttr ("Okt.", 2)));
-        g->addChild (std::make_unique<APF> (pid ("ramp_time"), "Zeit", skewRange (1.0f, 30000.0f, 1000.0f), 1000.0f, unitAttr ("ms", 0)));
-        g->addChild (std::make_unique<APF> (pid ("ramp_curve"), "Kurve", NormalisableRange<float> (-1.0f, 1.0f, 0.01f), 0.0f, unitAttr ("", 2)));
-        g->addChild (std::make_unique<APC> (pid ("ramp_loop"), "Wiederholung", StringArray { "Einmal", "Loop", "PingPong" }, 0));
-        g->addChild (std::make_unique<APB> (pid ("ramp_legato"), "Neu bei Legato", false));
+        auto g = std::make_unique<AudioProcessorParameterGroup> ("ramp", "Ramp", "|");
+        g->addChild (std::make_unique<APB> (pid ("ramp_on"), "Ramp Enabled", false));
+        g->addChild (std::make_unique<APF> (pid ("ramp_start"), "Start", NormalisableRange<float> (-8.0f, 8.0f, 0.01f), -2.0f, unitAttr ("oct", 2)));
+        g->addChild (std::make_unique<APF> (pid ("ramp_end"), "End", NormalisableRange<float> (-8.0f, 8.0f, 0.01f), 0.0f, unitAttr ("oct", 2)));
+        g->addChild (std::make_unique<APF> (pid ("ramp_time"), "Time", skewRange (1.0f, 30000.0f, 1000.0f), 1000.0f, unitAttr ("ms", 0)));
+        g->addChild (std::make_unique<APF> (pid ("ramp_curve"), "Curve", NormalisableRange<float> (-1.0f, 1.0f, 0.01f), 0.0f, unitAttr ("", 2)));
+        g->addChild (std::make_unique<APC> (pid ("ramp_loop"), "Repeat", StringArray { "Once", "Loop", "Ping-Pong" }, 0));
+        g->addChild (std::make_unique<APB> (pid ("ramp_legato"), "Restart on Legato", false));
         layout.add (std::move (g));
     }
     // ---- LFO 1 / 2
@@ -163,44 +163,44 @@ AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
         const String id = "lfo" + String (n);
         auto P = [&] (const char* suffix) { return ParameterID { id + "_" + suffix, 1 }; };
         auto g = std::make_unique<AudioProcessorParameterGroup> (id, "LFO " + String (n), "|");
-        g->addChild (std::make_unique<APC> (P ("shape"), "LFO " + String (n) + " Form",
-                                            StringArray { "Sinus", "Dreieck", U ("Säge auf"), U ("Säge ab"), "Rechteck", "S&H", "Zufall weich" }, 0));
-        g->addChild (std::make_unique<APC> (P ("sync"), "LFO " + String (n) + " Takt", StringArray { "Frei", "Projekt-Sync", U ("Rate-Verhältnis") }, 0));
-        g->addChild (std::make_unique<APF> (P ("hz"), "LFO " + String (n) + " Frequenz", logRange (0.01f, 100.0f), 1.0f, unitAttr ("Hz", 3)));
-        g->addChild (std::make_unique<APC> (P ("div"), "LFO " + String (n) + " Projekt-Teiler",
+        g->addChild (std::make_unique<APC> (P ("shape"), "LFO " + String (n) + " Shape",
+                                            StringArray { "Sine", "Triangle", "Saw Up", "Saw Down", "Square", "S&H", "Smooth Rand." }, 0));
+        g->addChild (std::make_unique<APC> (P ("sync"), "LFO " + String (n) + " Sync", StringArray { "Free", "Host Sync", "Rate Ratio" }, 0));
+        g->addChild (std::make_unique<APF> (P ("hz"), "LFO " + String (n) + " Frequency", logRange (0.01f, 100.0f), 1.0f, unitAttr ("Hz", 3)));
+        g->addChild (std::make_unique<APC> (P ("div"), "LFO " + String (n) + " Host Division",
                                             StringArray { "8/1", "4/1", "2/1", "1/1", "1/2", "1/4", "1/8", "1/16", "1/32",
                                                           "1/4T", "1/8T", "1/16T", "1/4.", "1/8.", "1/16." },
                                             5));
-        g->addChild (std::make_unique<APC> (P ("ratio"), "LFO " + String (n) + U (" Rate-Verhältnis"),
+        g->addChild (std::make_unique<APC> (P ("ratio"), "LFO " + String (n) + " Rate Ratio",
                                             StringArray { "1/1", "1/2", "1/3", "1/4", "1/6", "1/8", "1/12", "1/16", "1/32", "1/64" }, 5));
-        g->addChild (std::make_unique<APB> (P ("retrig"), "LFO " + String (n) + " Retrigger bei Note", true));
-        g->addChild (std::make_unique<APF> (P ("phase"), "LFO " + String (n) + " Startphase", NormalisableRange<float> (0.0f, 360.0f, 0.1f), 0.0f, unitAttr (U ("°"), 1)));
+        g->addChild (std::make_unique<APB> (P ("retrig"), "LFO " + String (n) + " Retrigger on Note", true));
+        g->addChild (std::make_unique<APF> (P ("phase"), "LFO " + String (n) + " Start Phase", NormalisableRange<float> (0.0f, 360.0f, 0.1f), 0.0f, unitAttr (U ("°"), 1)));
         g->addChild (std::make_unique<APF> (P ("to_rate"), "LFO " + String (n) + " -> Rate", NormalisableRange<float> (-24.0f, 24.0f, 0.01f), 0.0f, unitAttr ("st", 2)));
-        g->addChild (std::make_unique<APF> (P ("to_scan"), "LFO " + String (n) + " -> Start-Scan", NormalisableRange<float> (-100.0f, 100.0f, 0.1f), 0.0f, unitAttr ("%", 1)));
+        g->addChild (std::make_unique<APF> (P ("to_scan"), "LFO " + String (n) + " -> Start Scan", NormalisableRange<float> (-100.0f, 100.0f, 0.1f), 0.0f, unitAttr ("%", 1)));
         g->addChild (std::make_unique<APF> (P ("to_gate"), "LFO " + String (n) + " -> Gate", NormalisableRange<float> (-100.0f, 100.0f, 0.1f), 0.0f, unitAttr ("%", 1)));
-        g->addChild (std::make_unique<APF> (P ("to_pitch"), "LFO " + String (n) + " -> Sample-Pitch", NormalisableRange<float> (-24.0f, 24.0f, 0.01f), 0.0f, unitAttr ("st", 2)));
+        g->addChild (std::make_unique<APF> (P ("to_pitch"), "LFO " + String (n) + " -> Sample Pitch", NormalisableRange<float> (-24.0f, 24.0f, 0.01f), 0.0f, unitAttr ("st", 2)));
         layout.add (std::move (g));
     }
     // ---- Unison
     {
         auto g = std::make_unique<AudioProcessorParameterGroup> ("unison", "Unison", "|");
-        g->addChild (std::make_unique<API> (pid ("uni_voices"), "Unison-Stimmen", 1, 8, 1));
-        g->addChild (std::make_unique<APF> (pid ("uni_detune"), "Verstimmung", NormalisableRange<float> (0.0f, 100.0f, 0.1f), 10.0f, unitAttr ("ct", 1)));
-        g->addChild (std::make_unique<APF> (pid ("uni_spread"), "Stereobreite", NormalisableRange<float> (0.0f, 100.0f, 0.1f), 50.0f, unitAttr ("%", 1)));
-        g->addChild (std::make_unique<APB> (pid ("uni_phase"), "Zufallsphase", true));
+        g->addChild (std::make_unique<API> (pid ("uni_voices"), "Unison Voices", 1, 8, 1));
+        g->addChild (std::make_unique<APF> (pid ("uni_detune"), "Detune", NormalisableRange<float> (0.0f, 100.0f, 0.1f), 10.0f, unitAttr ("ct", 1)));
+        g->addChild (std::make_unique<APF> (pid ("uni_spread"), "Stereo Width", NormalisableRange<float> (0.0f, 100.0f, 0.1f), 50.0f, unitAttr ("%", 1)));
+        g->addChild (std::make_unique<APB> (pid ("uni_phase"), "Random Phase", true));
         layout.add (std::move (g));
     }
     // ---- Sequencer
     {
         auto g = std::make_unique<AudioProcessorParameterGroup> ("seq", "Sequencer", "|");
-        g->addChild (std::make_unique<APB> (pid ("seq_on"), "Sequencer an", false));
-        g->addChild (std::make_unique<API> (pid ("seq_len"), U ("Seq-Länge"), 1, 32, 16));
-        g->addChild (std::make_unique<APB> (pid ("seq_reset"), "Seq-Reset bei Note", true));
+        g->addChild (std::make_unique<APB> (pid ("seq_on"), "Sequencer Enabled", false));
+        g->addChild (std::make_unique<API> (pid ("seq_len"), "Sequence Length", 1, 32, 16));
+        g->addChild (std::make_unique<APB> (pid ("seq_reset"), "Reset on Note", true));
         layout.add (std::move (g));
     }
     // ---- Envelope
     {
-        auto g = std::make_unique<AudioProcessorParameterGroup> ("env", U ("Hüllkurve"), "|");
+        auto g = std::make_unique<AudioProcessorParameterGroup> ("env", "Envelope", "|");
         g->addChild (std::make_unique<APF> (pid ("env_a"), "Attack", skewRange (0.0f, 5000.0f, 200.0f), 0.0f, unitAttr ("ms", 1)));
         g->addChild (std::make_unique<APF> (pid ("env_d"), "Decay", skewRange (1.0f, 10000.0f, 300.0f), 100.0f, unitAttr ("ms", 1)));
         g->addChild (std::make_unique<APF> (pid ("env_s"), "Sustain", NormalisableRange<float> (0.0f, 100.0f, 0.1f), 100.0f, unitAttr ("%", 1)));
@@ -209,11 +209,11 @@ AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
     }
     // ---- Output
     {
-        auto g = std::make_unique<AudioProcessorParameterGroup> ("out", "Ausgang", "|");
+        auto g = std::make_unique<AudioProcessorParameterGroup> ("out", "Output", "|");
         g->addChild (std::make_unique<APC> (pid ("os"), "Oversampling", StringArray { "1x", "2x", "4x", "8x" }, 1));
         g->addChild (std::make_unique<APF> (pid ("drive"), "Drive", NormalisableRange<float> (0.0f, 48.0f, 0.1f), 0.0f, unitAttr ("dB", 1)));
-        g->addChild (std::make_unique<APC> (pid ("clip"), "Clipper", StringArray { "Aus", "Soft", "Hard" }, 2));
-        g->addChild (std::make_unique<APF> (pid ("out_gain"), "Ausgang", NormalisableRange<float> (-48.0f, 12.0f, 0.1f), -3.0f, unitAttr ("dB", 1)));
+        g->addChild (std::make_unique<APC> (pid ("clip"), "Clipper", StringArray { "Off", "Soft", "Hard" }, 2));
+        g->addChild (std::make_unique<APF> (pid ("out_gain"), "Output Gain", NormalisableRange<float> (-48.0f, 12.0f, 0.1f), -3.0f, unitAttr ("dB", 1)));
         layout.add (std::move (g));
     }
     return layout;

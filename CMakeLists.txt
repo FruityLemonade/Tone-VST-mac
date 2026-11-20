@@ -50,6 +50,8 @@ if (XTONE_BUILD_PLUGIN)
         plugin/Presets.cpp
         plugin/gui/PluginEditor.cpp
         plugin/gui/HeaderBar.cpp
+        plugin/gui/HammerLookAndFeel.cpp
+        plugin/gui/RatePanel.cpp
         plugin/gui/WaveformView.cpp
         plugin/gui/ParamPanel.cpp)
     target_include_directories(Xtone PRIVATE plugin)

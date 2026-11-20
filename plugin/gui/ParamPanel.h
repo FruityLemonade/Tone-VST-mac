@@ -1,14 +1,16 @@
 #pragma once
 #include <juce_audio_processors/juce_audio_processors.h>
-#include <juce_gui_basics/juce_gui_basics.h>
 
-/// Generic controls for all parameters, one tab per parameter group.
+/// Scrollable pages for the parameter groups without a dedicated editor.
 class ParamPanel : public juce::Component
 {
 public:
-    ParamPanel (juce::AudioProcessor& p, juce::AudioProcessorValueTreeState& state);
+    ParamPanel (juce::AudioProcessor&, juce::AudioProcessorValueTreeState&);
+    void showGroup (int index);
+    void paint (juce::Graphics&) override;
     void resized() override;
 
 private:
-    juce::TabbedComponent tabs { juce::TabbedButtonBar::TabsAtTop };
+    juce::OwnedArray<juce::Component> pages;
+    int selected = -1;
 };
