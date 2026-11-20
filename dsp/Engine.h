@@ -3,6 +3,7 @@
 #include "Modulators.h"
 #include "Random.h"
 #include "SampleView.h"
+#include "StepSequencer.h"
 
 #include <atomic>
 #include <cstdint>
@@ -67,7 +68,7 @@ struct EngineParams
     bool abMono { true };
     double abSamplePitch { 0.0 }, abFine { 0.0 };
     double abPenvAmt { 0.0 }, abPenvDecayMs { 50.0 };
-    // Ramp (M4)
+    // Ramp
     bool rampOn { false };
     double rampStart { -2.0 };
     double rampEnd { 0.0 };
@@ -75,7 +76,7 @@ struct EngineParams
     double rampCurve { 0.0 };
     int rampLoop { 0 };
     bool rampLegato { false };
-    // LFOs (M4)
+    // LFOs
     struct Lfo
     {
         int shape { 0 };
@@ -95,10 +96,11 @@ struct EngineParams
     double uniDetune { 10.0 };  // cents
     double uniSpread { 0.5 };
     bool uniPhase { true };
-    // Sequencer (M5)
+    // Sequencer
     bool seqOn { false };
     int seqLen { 16 };
     bool seqReset { true };
+    Sequence steps;
     // Envelope
     double envA { 0.0 }, envD { 100.0 }, envS { 1.0 }, envR { 5.0 };
     // Output
@@ -129,6 +131,7 @@ struct HostInfo
 struct Telemetry
 {
     std::atomic<float> rateHz { 0.0f };
+    std::atomic<float> rampBaseHz { 0.0f };
     std::atomic<int> slice { 0 };
     std::atomic<int> numSlices { 1 };
     std::atomic<int> step { -1 };
@@ -188,11 +191,14 @@ private:
     void noteOff (int note) noexcept;
     void removeNote (int note) noexcept;
     void afterRelease (int releasedNote) noexcept;
-    void startNewNote (bool legato) noexcept;
     void updateSnapOffset() noexcept;
     void configureLanes() noexcept;
-    void fireHit (int laneIndex, double subOffset, double periodSamples) noexcept;
-    HitStart makeHit (int slice, bool useB) const noexcept;
+    void fireHit (int laneIndex, double subOffset, double periodSamples, double scanMod, double gateMod,
+                  double pitchA, double pitchB) noexcept;
+    HitStart makeHit (int slice, bool useB, double scanMod = 0.0) const noexcept;
+    void advanceLfos (double samples, double clockIncrement) noexcept;
+    void syncLfosToHit() noexcept;
+    double modulation (double EngineParams::Lfo::* depth) const noexcept;
     bool nextHitUsesB (int laneIndex) noexcept;
     int currentSlice() const noexcept;
     double noteRef() const noexcept;
@@ -221,12 +227,21 @@ private:
     OnePole paramSm, bendSm, sPitchSm, bPitchSm, velSm, driveSm, outSm;
     double glideNote { 60.0 };
     double glideCoef { 1.0 };
-    double lastRateHz { 0.0 };
+    double lastRateHz { 0.0 }, lastRampBaseSt { 0.0 };
 
+    Ramp ramp;
+    struct LfoState
+    {
+        Lfo oscillator;
+        double increment = 0.0;
+        int sync = -1, ratioHits = 1, ticks = 0;
+    } lfos[2];
     Adsr adsr;
     bool running { false };
 
     Lane lanes[kMaxLanes];
+    StepSequencer sequencers[kMaxLanes];
+    bool sequenceEnabled = false;
     int numLanes { 1 };
     double laneGain { 1.0 };
     int configuredLanes { -1 };

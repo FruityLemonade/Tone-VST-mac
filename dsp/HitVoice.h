@@ -15,6 +15,7 @@ struct HitStart
     bool reverse { false };
     double subOffset { 0.0 }; // engine samples elapsed since the exact hit time
     double speedRatio { 1.0 };// source frames per engine sample, without global pitch mod / pitch env
+    double startPitchRatio { 1.0 }; // instantaneous pitch for sub-sample start
     double gateSamples { -1.0 }; // < 0 = no gate
     double fadeSamples { 0.0 };  // declick length in engine samples (fade-in, gate fade-out, window end)
     double penvAmtSt { 0.0 };    // pitch envelope amount (semitones)

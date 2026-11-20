@@ -26,7 +26,10 @@ WindowParameterIds windowParameters (bool sliceB)
 WaveformView::WaveformView (XtoneProcessor& p) : proc (p)
 {
     setTitle ("Sample waveform");
-    setTooltip ("Drag either playback handle to trim the slice. Click to select, Option-click or Alt-click to audition, or double-click to add a slice marker.");
+    loadSample.setTooltip ("Open a WAV, AIFF, FLAC, Ogg, or MP3 sample. You can also drop it here.");
+    normalize.setTooltip ("Raise the sample peak to full scale.");
+    sensitivity.setTooltip ("Higher values detect quieter transients.");
+    sensitivityLabel.setTooltip (sensitivity.getTooltip());
     sensitivity.setRange (0, 100, 1);
     sensitivity.setValue (50, dontSendNotification);
     sensitivity.setTextValueSuffix (" %");
@@ -334,7 +337,7 @@ void WaveformView::paintTimeline (Graphics& g, Rectangle<int> w) const
     const auto& audio = *asset->audio;
     const int segments = jlimit (2, 5, w.getWidth() / 105);
     const double lengthSeconds = visibleLength / audio.sampleRate;
-    g.setColour (hammer::muted);
+    g.setColour (hammer::panelColours (*this).muted);
     g.setFont (hammer::mono (11.0f));
     for (int i = 0; i <= segments; ++i)
     {
@@ -348,19 +351,31 @@ void WaveformView::paintTimeline (Graphics& g, Rectangle<int> w) const
     }
 }
 
+void WaveformView::lookAndFeelChanged()
+{
+    const auto& colours = hammer::panelColours (*this);
+    sampleName.setColour (Label::backgroundColourId, colours.recess);
+    sampleName.setColour (Label::outlineColourId, colours.edge);
+    status.setColour (Label::textColourId, colours.muted);
+}
+
 void WaveformView::paint (Graphics& g)
 {
     const auto skin = hammer::skinFor (*this);
     const auto accent = hammer::accentColour (skin);
+    const auto& colours = hammer::panelColours (skin);
+    const bool cotton = skin == xtp::EditorSkin::cottonCandy;
+    const auto plotSurface = cotton ? Colour (0xfffffcff) : Colour (0xff101210);
+    const auto handleSurface = cotton ? plotSurface : hammer::ink;
     hammer::artwork::drawWaveformPanel (g, getLocalBounds(), skin);
     const auto w = waveArea();
-    g.setColour (Colour (0xff101210));
+    g.setColour (plotSurface);
     g.fillRoundedRectangle (w.toFloat(), 5.0f);
-    g.setColour (hammer::edge);
+    g.setColour (colours.edge);
     g.drawRoundedRectangle (w.toFloat().reduced (0.5f), 5.0f, 1.0f);
     if (visibleLength <= 0.0 || w.isEmpty())
     {
-        g.setColour (hammer::muted);
+        g.setColour (colours.muted);
         g.setFont (hammer::font (14.0f));
         g.drawText ("Drop an audio file here", w, Justification::centred);
         return;
@@ -375,8 +390,8 @@ void WaveformView::paint (Graphics& g)
     const int selected = xt::wrapSliceIndex (plotState.selectedSlice, numSlices);
     const bool cycling = plotState.cyclingSlice >= 0;
     const int sliceB = xt::wrapSliceIndex (plotState.cyclingSlice, numSlices);
-    const auto colourB = Colour (0xffc4a2ff);
-    const auto auditionColour = Colour (0xff8cdbf4);
+    const auto colourB = cotton ? Colour (0xff7947b8) : Colour (0xffc4a2ff);
+    const auto auditionColour = cotton ? Colour (0xff286d9f) : Colour (0xff8cdbf4);
     const int playing = plotState.playingSlice;
     const bool isPlaying = isPositiveAndBelow (playing, numSlices);
     const auto frames = (double) asset->audio->frames();
@@ -394,11 +409,11 @@ void WaveformView::paint (Graphics& g)
     {
         const auto slice = sliceBounds (playing);
         const float x0 = xInPlot (slice.start), x1 = xInPlot (slice.end);
-        g.setColour (hammer::text.withAlpha (0.9f));
+        g.setColour (colours.text.withAlpha (0.9f));
         g.fillRect (x0, (float) w.getY() + 2.0f, x1 - x0, 2.0f);
     }
 
-    g.setColour (hammer::edge.withAlpha (0.5f));
+    g.setColour (colours.edge.withAlpha (0.5f));
     for (int i = 1; i <= 3; ++i)
         g.drawHorizontalLine (w.getY() + i * w.getHeight() / 4, (float) w.getX(), (float) w.getRight());
 
@@ -412,11 +427,11 @@ void WaveformView::paint (Graphics& g)
         if (frame < visibleStart || frame >= visibleEnd) continue;
         const float x = frameToX (frame);
         const auto handle = Rectangle<float> (12.0f, 15.0f).withCentre ({ x, (float) w.getBottom() - 10.0f });
-        g.setColour (hammer::text.withAlpha (0.72f));
+        g.setColour (colours.text.withAlpha (0.72f));
         g.drawDashedLine ({ x, (float) w.getY(), x, handle.getY() }, dashes, 2, 1.0f);
-        g.setColour ((int) i == dragIndex ? accent : hammer::muted);
+        g.setColour ((int) i == dragIndex ? accent : colours.muted);
         g.fillRoundedRectangle (handle, 2.5f);
-        g.setColour (hammer::ink);
+        g.setColour (handleSurface);
         for (int offset : { -2, 0, 2 })
             g.drawVerticalLine (roundToInt (x) + offset, handle.getY() + 4.0f, handle.getBottom() - 4.0f);
     }
@@ -430,7 +445,7 @@ void WaveformView::paint (Graphics& g)
         const float left = xInPlot (window.start), right = xInPlot (window.end);
         g.setColour (colour.withAlpha (0.1f));
         g.fillRect (left, (float) w.getY(), right - left, y - (float) w.getY());
-        g.setColour (hammer::ink.withAlpha (0.94f));
+        g.setColour (handleSurface.withAlpha (0.94f));
         g.fillRect (left, y - 3.5f, right - left, 7.0f);
         g.setColour (colour);
         g.fillRect (left, y - 1.75f, right - left, 3.5f);
@@ -441,10 +456,10 @@ void WaveformView::paint (Graphics& g)
             if (bounds.isEmpty()) return;
             const auto centre = bounds.getCentre();
             const bool activeHandle = trimDrag && trimDrag->handle.sliceB == isB && trimDrag->handle.startsPlayback == start;
-            const auto handleColour = activeHandle ? hammer::text : colour;
+            const auto handleColour = activeHandle ? colours.text : colour;
             g.setColour (handleColour);
             g.drawLine (centre.x, y, centre.x, centre.y, 2.0f);
-            g.setColour (hammer::ink);
+            g.setColour (handleSurface);
             g.fillRoundedRectangle (bounds.reduced (1.0f, 0.5f), 2.5f);
             g.setColour (handleColour);
             if (start)
@@ -476,7 +491,7 @@ void WaveformView::paint (Graphics& g)
         if (dashed) g.drawDashedLine (line, dashes, 2, 1.5f);
         else g.drawLine (line, 1.0f);
     };
-    playhead (plotState.position, hammer::text, false);
+    playhead (plotState.position, colours.text, false);
     playhead (plotState.auditionPosition, auditionColour, true);
 
     auto readouts = w.reduced (8).removeFromTop (19);
@@ -485,13 +500,13 @@ void WaveformView::paint (Graphics& g)
     {
         const auto bounds = readouts.removeFromRight (width);
         readouts.removeFromRight (4);
-        g.setColour (hammer::recess.withAlpha (0.94f));
+        g.setColour (colours.recess.withAlpha (0.94f));
         g.fillRoundedRectangle (bounds.toFloat(), 3.0f);
         g.setColour (colour);
         g.drawText (text, bounds, Justification::centred);
     };
     if (plotState.auditionSlice >= 0) badge ("AUD " + String (plotState.auditionSlice + 1), auditionColour, 66);
-    if (isPlaying && (cycling || playing != selected)) badge ("PLAY " + String (playing + 1), hammer::text, 67);
+    if (isPlaying && (cycling || playing != selected)) badge ("PLAY " + String (playing + 1), colours.text, 67);
     if (cycling) badge ("B " + String (sliceB + 1), colourB, 54);
     badge ((cycling ? "A " : "SLICE ") + String (selected + 1) + "/" + String (numSlices), accent, cycling ? 85 : 110);
 }
@@ -621,6 +636,17 @@ void WaveformView::finishTrim()
     const auto ids = windowParameters (drag->handle.sliceB);
     proc.apvts.getParameter (ids.scan)->endChangeGesture();
     proc.apvts.getParameter (ids.length)->endChangeGesture();
+}
+
+String WaveformView::getTooltip()
+{
+    const auto pos = getMouseXYRelative();
+    if (asset == nullptr || visibleLength <= 0.0 || ! waveArea().contains (pos)) return {};
+    if (const auto handle = trimHandleAt (pos.toFloat()))
+        return handle->sliceB ? "Drag to trim the B playback window." : "Drag to trim the A playback window.";
+    if (markerAt ((float) pos.x) >= 0)
+        return "Drag to move this marker. Right-click to delete it.";
+    return "Click to select a slice, Alt/Option-click to audition, or double-click to add a marker. Scroll to zoom.";
 }
 
 void WaveformView::mouseMove (const MouseEvent& e)

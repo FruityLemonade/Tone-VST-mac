@@ -21,6 +21,7 @@ public:
         for (size_t i = 0; i < xtp::editorSkins.size(); ++i)
             skins.addItem (xtp::editorSkins[i].name, (int) i + 1);
         skins.setTitle ("Skin");
+        skins.setTooltip ("Choose a faceplate for this plugin instance.");
         skins.onChange = [this]
         {
             const int index = skins.getSelectedItemIndex();
@@ -59,10 +60,11 @@ public:
 
     void paint (Graphics& g) override
     {
+        const auto& colours = hammer::panelColours (*this);
         g.fillAll (Colours::black.withAlpha (0.60f));
-        g.setColour (hammer::rubber);
+        g.setColour (colours.rubber);
         g.fillRoundedRectangle (card.toFloat(), 10.0f);
-        g.setColour (hammer::edge);
+        g.setColour (colours.edge);
         g.drawRoundedRectangle (card.toFloat().reduced (0.5f), 10.0f, 1.0f);
 
         const int x = card.getX() + 18;
@@ -70,14 +72,14 @@ public:
         g.setColour (hammer::accentFor (*this));
         g.setFont (hammer::font (26.0f, Font::bold));
         g.drawText ("XTONE", x, y, 220, 30, Justification::centredLeft);
-        g.setColour (hammer::text);
+        g.setColour (colours.text);
         g.setFont (hammer::font (15.0f));
         g.drawText ("Extratone Retrigger Sampler", x, y + 32, 250, 22, Justification::centredLeft);
-        g.setColour (hammer::muted);
+        g.setColour (colours.muted);
         g.setFont (hammer::font (13.5f));
         g.drawText ("Version " JucePlugin_VersionString "  " JucePlugin_Manufacturer,
                     x, y + 55, 250, 19, Justification::centredLeft);
-        g.setColour (hammer::text);
+        g.setColour (colours.text);
         g.setFont (hammer::font (14.0f, Font::bold));
         g.drawText ("Skin", x, skins.getY(), 57, skins.getHeight(), Justification::centredLeft);
     }
@@ -108,12 +110,13 @@ private:
 };
 
 XtoneEditor::XtoneEditor (XtoneProcessor& p)
-    : AudioProcessorEditor (p), proc (p), header (p), waveform (p), rate (p), params (p)
+    : AudioProcessorEditor (p), proc (p), header (p), waveform (p), rate (p), params (p), sequence (p)
 {
     addAndMakeVisible (header);
     addAndMakeVisible (waveform);
     addAndMakeVisible (rate);
     addChildComponent (params);
+    addChildComponent (sequence);
     wordmark.getProperties().set ("wordmark", true);
     wordmark.setTitle ("About XTONE and skin settings");
     wordmark.setTooltip ("About XTONE and skin settings");
@@ -121,11 +124,27 @@ XtoneEditor::XtoneEditor (XtoneProcessor& p)
     wordmark.onClick = [this] { about->show(); };
     addAndMakeVisible (wordmark);
 
-    const auto& names = params.getPageNames();
+    auto names = params.getPageNames();
+    sequenceTab = names.size();
+    names.add ("Sequencer");
+    constexpr const char* tabHelp[] {
+        "Choose the clock source and set the retrigger rate.",
+        "Set MIDI note behavior, tuning, glide, and scale snapping.",
+        "Set hit length, overlap, jitter, and unison voices.",
+        "Set the main slice, playback window, and sample pitch.",
+        "Alternate between the main slice and independent B playback.",
+        "Sweep the retrigger rate after a MIDI note-on.",
+        "Modulate rate, scan, gate, and sample pitch with LFO 1.",
+        "Modulate rate, scan, gate, and sample pitch with LFO 2.",
+        "Shape note amplitude and set output drive, clipping, and level.",
+        "Edit the pattern that advances on every retrigger tick."
+    };
+    jassert (names.size() == (int) std::size (tabHelp));
     for (int i = 0; i < names.size(); ++i)
     {
         auto* key = keys.add (new TextButton (names[i]));
         key->getProperties().set ("key", true);
+        key->setTooltip (tabHelp[i]);
         key->setRadioGroupId (2, dontSendNotification);
         key->setClickingTogglesState (true);
         key->onClick = [this, key, i]
@@ -169,17 +188,20 @@ void XtoneEditor::selectGroup (int index)
 {
     keys[index]->setToggleState (true, dontSendNotification);
     rate.setVisible (index == 0);
-    params.setVisible (index != 0);
-    params.showGroup (index);
+    params.setVisible (index != 0 && index != sequenceTab);
+    sequence.setVisible (index == sequenceTab);
+    if (index != sequenceTab) params.showGroup (index);
+    resized();
+    repaint();
 }
 
 void XtoneEditor::paint (Graphics& g)
 {
     const auto dock = header.presetDockBounds().translated (header.getX(), header.getY());
     const auto skin = theme.getSkin();
-    hammer::artwork::drawFrame (g, getLocalBounds(), waveform.getBounds(), rate.getBounds(), dock, skin);
+    hammer::artwork::drawFrame (g, getLocalBounds(), waveFrame, rate.getBounds(), dock, skin);
     if (params.isVisible()) hammer::artwork::drawRatePanel (g, params.getBounds(), skin);
-    hammer::artwork::drawKeyWell (g, keyWell);
+    hammer::artwork::drawKeyWell (g, keyWell, skin);
 }
 
 void XtoneEditor::resized()
@@ -205,11 +227,18 @@ void XtoneEditor::resized()
         totalWeight -= weight;
     }
 
-    auto left = content.removeFromLeft (content.getWidth() * 61 / 100);
-    waveform.setBounds (left);
+    auto body = content;
+    waveFrame = content.removeFromLeft (content.getWidth() * 61 / 100);
     content.removeFromLeft (10);
     rate.setBounds (content);
     params.setBounds (content);
+    if (sequence.isVisible())
+    {
+        sequence.setBounds (body.removeFromBottom (jlimit (185, 225, body.getHeight() / 2)));
+        body.removeFromBottom (8);
+        waveform.setBounds (body);
+    }
+    else waveform.setBounds (waveFrame);
     const auto dockX = header.getX() + header.presetDockBounds().getX();
     wordmark.setBounds (hammer::artwork::wordmarkBounds (waveform.getY(), dockX, theme.getSkin()));
     if (about != nullptr) about->setBounds (getLocalBounds());

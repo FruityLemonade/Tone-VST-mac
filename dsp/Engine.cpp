@@ -22,8 +22,6 @@ namespace
 
 Engine::Engine()
 {
-    for (int i = 0; i < kMaxLanes; ++i)
-        lanes[i].clock.setSeed (0xA5A5ull + 7919ull * (uint64_t) i);
     setEngineRate (96000.0);
     reset();
 }
@@ -47,17 +45,26 @@ void Engine::setSource (const SourceView& src) noexcept
 
 void Engine::setHostInfo (const HostInfo& h) noexcept
 {
+    if (host.bpm != h.bpm || host.valid != h.valid) paramsDirty = true;
     host = h;
-    if (params.rateSrc == 2) paramsDirty = true;
 }
 
 void Engine::reset() noexcept
 {
-    for (auto& l : lanes)
+    for (int i = 0; i < kMaxLanes; ++i)
     {
-        l.killAll();
-        l.clock.reset();
+        lanes[i].killAll();
+        lanes[i].clock.reset();
+        lanes[i].clock.setSeed (0xA5A5ull + 7919ull * (uint64_t) i);
     }
+    for (auto& sequencer : sequencers) sequencer.reset();
+    for (int i = 0; i < 2; ++i)
+    {
+        lfos[i].oscillator.setSeed (0x2F7631ull + 7919ull * (uint64_t) i);
+        lfos[i].sync = -1;
+    }
+    rng.setSeed (0xC0FFEEull);
+    ramp.reset();
     stackSize = 0;
     std::fill (std::begin (sustainedFlag), std::end (sustainedFlag), false);
     sustainPedal = false;
@@ -133,6 +140,29 @@ void Engine::updateTargets() noexcept
     for (auto& l : lanes) l.clock.setJitter (p.jitter);
     dcR = 1.0 - kTwoPi * 5.0 / fsE;
 
+    ramp.configure (p.rampTimeMs, p.rampCurve, p.rampLoop, fsE);
+    const double bpm = host.bpm > 0.0 && std::isfinite (host.bpm) ? host.bpm : 120.0;
+    for (int i = 0; i < 2; ++i)
+    {
+        auto& lfo = lfos[i];
+        const auto& settings = p.lfo[i];
+        const int hits = lfoRatioHits[std::clamp (settings.ratio, 0, 9)];
+        if (lfo.sync != settings.sync || (settings.sync == 2 && lfo.ratioHits != hits))
+        {
+            lfo.oscillator.reset (settings.phaseDeg / 360.0);
+            lfo.ticks = 0;
+        }
+        lfo.sync = settings.sync;
+        lfo.ratioHits = hits;
+        const double hz = settings.sync == 1
+            ? bpm / 60.0 / lfoHostBeats[std::clamp (settings.div, 0, 14)] : settings.hz;
+        lfo.increment = std::clamp (hz / fsE, 0.0, 0.45);
+    }
+    if (sequenceEnabled != p.seqOn)
+    {
+        sequenceEnabled = p.seqOn;
+        for (auto& sequencer : sequencers) sequencer.reset();
+    }
     configureLanes();
     updateSnapOffset();
     paramsDirty = false;
@@ -146,7 +176,11 @@ void Engine::configureLanes() noexcept
     for (int k = n; k < kMaxLanes; ++k) lanes[k].killAll();
     if (n > numLanes && running)
         for (int k = numLanes; k < n; ++k) lanes[k].clock.setPhase (lanes[0].clock.getPhase());
-    for (int k = numLanes; k < n; ++k) cyclingTicks[k] = cyclingTicks[0];
+    for (int k = numLanes; k < n; ++k)
+    {
+        cyclingTicks[k] = cyclingTicks[0];
+        sequencers[k] = sequencers[0];
+    }
     numLanes = n;
     for (int k = 0; k < n; ++k)
     {
@@ -210,6 +244,16 @@ void Engine::noteOn (int note, float vel) noexcept
     if (! doGlide) glideNote = (double) note;
     hadNote = true;
     std::fill (std::begin (cyclingTicks), std::end (cyclingTicks), 0u);
+
+    if (! legato || params.rampLegato) ramp.reset();
+    for (int i = 0; i < 2; ++i)
+        if (params.lfo[i].retrig)
+        {
+            lfos[i].oscillator.reset (params.lfo[i].phaseDeg / 360.0);
+            lfos[i].ticks = 0;
+        }
+    if (params.seqReset)
+        for (auto& sequencer : sequencers) sequencer.reset();
 
     if (! legato)
     {
@@ -317,10 +361,11 @@ bool Engine::nextHitUsesB (int k) noexcept
     }
 }
 
-HitStart Engine::makeHit (int slice, bool useB) const noexcept
+HitStart Engine::makeHit (int slice, bool useB, double scanMod) const noexcept
 {
     const auto window = sliceWindow ((double) source.bounds[slice], (double) source.bounds[slice + 1],
-                                     useB ? params.abScan : params.scan, useB ? params.abLength : params.length);
+                                     std::clamp ((useB ? params.abScan : params.scan) + scanMod, 0.0, 1.0),
+                                     useB ? params.abLength : params.length);
     HitStart h;
     h.winStart = window.start;
     h.winEnd = window.end;
@@ -342,20 +387,44 @@ void Engine::auditionSlice (int index, bool useB) noexcept
     audition.start (h, 0);
 }
 
-void Engine::fireHit (int k, double subOffset, double periodSamples) noexcept
+void Engine::fireHit (int k, double subOffset, double periodSamples, double scanMod, double gateMod,
+                      double pitchA, double pitchB) noexcept
 {
+    const double fade = std::max (0.0, params.declickMs) * 0.001 * fsE;
+    const SequenceStep* step = nullptr;
+    if (sequenceEnabled)
+    {
+        const int index = sequencers[k].tick (std::clamp (params.seqLen, 1, (int) params.steps.size()));
+        step = &params.steps[(size_t) index];
+        if (! step->on)
+        {
+            lanes[k].releaseAll (fade);
+            return;
+        }
+        if (step->tie) return;
+    }
     if (! source.valid()) return;
-    const bool useB = nextHitUsesB (k);
-    auto h = makeHit (useB ? wrapSliceIndex (params.abSlice, source.numSlices) : currentSlice(), useB);
+
+    const bool useB = ! sequenceEnabled && nextHitUsesB (k);
+    int slice = currentSlice();
+    if (useB) slice = wrapSliceIndex (params.abSlice, source.numSlices);
+    else if (step != nullptr && step->slice >= 0) slice = wrapSliceIndex (step->slice, source.numSlices);
+    auto h = makeHit (slice, useB, scanMod);
+    h.startPitchRatio = useB ? pitchB : pitchA;
     h.subOffset = subOffset;
     if (useB)
     {
         h.speedRatio *= cyclingPitchRatio;
         h.gain = cyclingGain;
     }
-    const double gate = std::clamp (params.gate, 0.01, 1.0);
+    if (step != nullptr)
+    {
+        h.speedRatio *= std::exp2 (step->pitch / 12.0);
+        h.gain = step->velocity;
+    }
+    const double gate = std::clamp (params.gate + gateMod, 0.01, 1.0);
     h.gateSamples = gate < 0.99999 ? gate * periodSamples : -1.0;
-    h.fadeSamples = std::max (0.0, params.declickMs) * 0.001 * fsE;
+    h.fadeSamples = fade;
     h.penvAmtSt = useB ? params.abPenvAmt : params.penvAmt;
     const double decayMs = useB ? params.abPenvDecayMs : params.penvDecayMs;
     h.penvCoef = std::exp (-1.0 / (std::max (0.1, decayMs) * 0.001 * fsE));
@@ -373,6 +442,37 @@ void Engine::fireHit (int k, double subOffset, double periodSamples) noexcept
     lanes[k].trigger (h, limit, stealFade);
 }
 
+double Engine::modulation (double EngineParams::Lfo::* depth) const noexcept
+{
+    double sum = 0.0;
+    for (int i = 0; i < 2; ++i)
+        if (const double amount = params.lfo[i].*depth; amount != 0.0)
+            sum += lfos[i].oscillator.value (params.lfo[i].shape) * amount;
+    return sum;
+}
+
+void Engine::advanceLfos (double samples, double clockIncrement) noexcept
+{
+    for (auto& lfo : lfos)
+    {
+        const double increment = lfo.sync == 2 ? clockIncrement / lfo.ratioHits : lfo.increment;
+        lfo.oscillator.advance (increment * samples);
+    }
+}
+
+void Engine::syncLfosToHit() noexcept
+{
+    for (int i = 0; i < 2; ++i)
+    {
+        auto& lfo = lfos[i];
+        if (lfo.sync == 2 && ++lfo.ticks == lfo.ratioHits)
+        {
+            lfo.oscillator.anchor (params.lfo[i].phaseDeg / 360.0);
+            lfo.ticks = 0;
+        }
+    }
+}
+
 int Engine::activeVoiceCount() const noexcept
 {
     int n = 0;
@@ -384,7 +484,7 @@ int Engine::activeVoiceCount() const noexcept
 
 void Engine::process (float* outL, float* outR, int n, const MidiEvent* events, int numEvents) noexcept
 {
-    if (paramsDirty || params.rateSrc == 2) updateTargets();
+    if (paramsDirty) updateTargets();
 
     // host phase lock (on transport start / ppq jump)
     if (params.rateSrc == 2 && params.hostLock && host.valid && host.playing && running)
@@ -421,37 +521,62 @@ void Engine::process (float* outL, float* outR, int n, const MidiEvent* events, 
         if (pitchMode && hadNote) st += glideNote - noteRef();
         st += bendSm.process (bendTarget) * pbRange;
 
+        lastRampBaseSt = st;
+        if (running && params.rampOn)
+            st += 12.0 * ramp.process (params.rampStart, params.rampEnd);
+        st += modulation (&EngineParams::Lfo::toRate);
+
         double hz = std::exp2 (st / 12.0);
         if (snapAll) hz = snapHz (hz, scale, params.snapRoot, params.a4);
         lastRateHz = clampRate (hz, fsE);
 
-        const double pitchA = std::exp2 (sPitchSm.process (sPitchTarget) / 12.0);
-        const auto bPitch = bPitchSm.process (bPitchTarget);
+        const double pitchMod = modulation (&EngineParams::Lfo::toPitch);
+        const auto aPitch = sPitchSm.process (sPitchTarget) + pitchMod;
+        const double pitchA = aPitch == 0.0 ? 1.0 : std::exp2 (aPitch / 12.0);
+        const auto bPitch = bPitchSm.process (bPitchTarget) + pitchMod;
         const double pitchB = bPitch == 0.0 ? 1.0 : std::exp2 (bPitch / 12.0);
 
         float sl = 0.0f, sr = 0.0f;
+        double elapsed = 0.0;
+        double clockIncrement = 0.0;
         if (running)
         {
             for (int k = 0; k < numLanes; ++k)
             {
                 Lane& lane = lanes[k];
                 const double baseInc = clampRate (hz * lane.detuneRatio, fsE) / fsE;
+                double sub = 0.0;
+                bool hit = resetPending;
                 if (resetPending)
                 {
-                    const double ph = (params.uniPhase && numLanes > 1) ? rng.next01() : 0.0;
-                    lane.clock.reset (ph);
-                    fireHit (k, ph / baseInc, 1.0 / baseInc);
+                    const double phase = params.uniPhase && numLanes > 1 ? rng.next01() : 0.0;
+                    lane.clock.reset (phase);
                 }
                 else
                 {
-                    double sub = 0.0;
-                    if (lane.clock.tick (baseInc, sub))
-                        fireHit (k, sub, lane.clock.getPeriodFactor() / baseInc);
+                    hit = lane.clock.tick (baseInc, sub);
+                    if (k == 0) clockIncrement = lane.clock.getLastInc();
+                }
+
+                if (hit)
+                {
+                    // Split at the reference lane's exact crossing. Its LFOs use
+                    // the jittered clock increment, including bends and self-modulation.
+                    if (k == 0 && ! resetPending)
+                    {
+                        elapsed = 1.0 - sub;
+                        advanceLfos (elapsed, clockIncrement);
+                        syncLfosToHit();
+                    }
+                    fireHit (k, sub, lane.clock.getPeriodFactor() / baseInc,
+                             modulation (&EngineParams::Lfo::toScan), modulation (&EngineParams::Lfo::toGate),
+                             pitchA, pitchB);
                 }
                 lane.render (source.sample, pitchA, pitchB, sl, sr);
             }
             resetPending = false;
         }
+        advanceLfos (1.0 - elapsed, clockIncrement);
 
         const double env = adsr.process();
         const double g = env * laneGain * velSm.process (velocity);
@@ -501,6 +626,9 @@ void Engine::process (float* outL, float* outR, int n, const MidiEvent* events, 
 
     // telemetry
     telemetry.rateHz.store ((float) lastRateHz, std::memory_order_relaxed);
+    telemetry.rampBaseHz.store ((float) std::exp2 (lastRampBaseSt / 12.0), std::memory_order_relaxed);
+    const int step = running && sequenceEnabled ? sequencers[0].currentStep() : -1;
+    telemetry.step.store (step < params.seqLen ? step : -1, std::memory_order_relaxed);
     const auto* hit = running ? lanes[0].newestVoice() : nullptr;
     telemetry.slice.store (hit != nullptr ? hit->getSliceIndex() : -1, std::memory_order_relaxed);
     telemetry.numSlices.store (std::max (1, source.numSlices), std::memory_order_relaxed);

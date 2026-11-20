@@ -1,11 +1,22 @@
 #include "HammerLookAndFeel.h"
 
+#include "CottonCandyArtwork.h"
 #include "FaceplateArtwork.h"
 
 using namespace juce;
 
 namespace hammer
 {
+const PanelColours& panelColours (xtp::EditorSkin skin)
+{
+    static const PanelColours standard { text, muted, recess, edge, rubber };
+    static const PanelColours candy { cottonCandy::berry, Colour (0xff794461), Colour (0xfffff8fc),
+                                      Colour (0xffc78da9), Colour (0xffffe4f1) };
+    return skin == xtp::EditorSkin::cottonCandy ? candy : standard;
+}
+
+const PanelColours& panelColours (const Component& component) { return panelColours (skinFor (component)); }
+
 Colour accentColour (xtp::EditorSkin skin)
 {
     switch (skin)
@@ -14,11 +25,15 @@ Colour accentColour (xtp::EditorSkin skin)
         case xtp::EditorSkin::makita:     return Colour (0xff58eeee);
         case xtp::EditorSkin::festool:   return Colour (0xffb9ef00);
         case xtp::EditorSkin::hilti:     return Colour (0xffff4937);
+        case xtp::EditorSkin::cottonCandy: return cottonCandy::rose;
     }
     return yellow;
 }
 
-Colour ratePanelText (xtp::EditorSkin skin) { return skin == xtp::EditorSkin::hammerDrill ? ink : text; }
+Colour ratePanelText (xtp::EditorSkin skin)
+{
+    return skin == xtp::EditorSkin::hammerDrill ? ink : panelColours (skin).text;
+}
 
 xtp::EditorSkin skinFor (const Component& component)
 {
@@ -91,8 +106,14 @@ void fillSlope (Graphics& g, const Path& shape, Rectangle<float> r, Colour top, 
 
 } // namespace
 
-void drawRecess (Graphics& g, Rectangle<float> r)
+void drawRecess (Graphics& g, Rectangle<float> r, xtp::EditorSkin skin)
 {
+    if (skin == xtp::EditorSkin::cottonCandy)
+    {
+        const auto& colours = panelColours (skin);
+        cottonCandy::drawPearl (g, r, colours.recess, colours.rubber, 15.0f);
+        return;
+    }
     const auto rim = cutCorners (r, 11.0f);
     fillSlope (g, rim, r, Colour (0xff10110f), Colour (0xff626158));
     const auto slope = r.reduced (1.0f);
@@ -114,44 +135,46 @@ void LookAndFeel::setSkin (xtp::EditorSkin next)
 {
     skin = next;
     accent = accentColour (skin);
-    const auto selectedText = skin == xtp::EditorSkin::hilti ? text : ink;
-    const auto selection = skin == xtp::EditorSkin::hilti ? Colour (0xffbb2316) : accent;
-    setColour (ResizableWindow::backgroundColourId, recess);
-    setColour (Label::textColourId, text);
-    setColour (TextEditor::textColourId, text);
-    setColour (TextEditor::backgroundColourId, recess);
-    setColour (TextEditor::outlineColourId, edge);
+    const auto& colours = panelColours (skin);
+    const auto selectedText = skin == xtp::EditorSkin::hilti || skin == xtp::EditorSkin::cottonCandy ? colours.text : ink;
+    const auto selection = skin == xtp::EditorSkin::hilti ? Colour (0xffbb2316)
+                         : skin == xtp::EditorSkin::cottonCandy ? cottonCandy::blue : accent;
+    setColour (ResizableWindow::backgroundColourId, colours.recess);
+    setColour (Label::textColourId, colours.text);
+    setColour (TextEditor::textColourId, colours.text);
+    setColour (TextEditor::backgroundColourId, colours.recess);
+    setColour (TextEditor::outlineColourId, colours.edge);
     setColour (TextEditor::focusedOutlineColourId, accent);
     setColour (TextEditor::highlightColourId, selection);
     setColour (TextEditor::highlightedTextColourId, selectedText);
     setColour (CaretComponent::caretColourId, accent);
-    setColour (TextButton::buttonColourId, rubber);
+    setColour (TextButton::buttonColourId, colours.rubber);
     setColour (TextButton::buttonOnColourId, selection);
-    setColour (TextButton::textColourOffId, text);
+    setColour (TextButton::textColourOffId, colours.text);
     setColour (TextButton::textColourOnId, selectedText);
-    setColour (ToggleButton::textColourId, text);
+    setColour (ToggleButton::textColourId, colours.text);
     setColour (ToggleButton::tickColourId, accent);
-    setColour (ToggleButton::tickDisabledColourId, edge);
-    setColour (ComboBox::textColourId, text);
-    setColour (ComboBox::backgroundColourId, recess);
-    setColour (ComboBox::outlineColourId, edge);
+    setColour (ToggleButton::tickDisabledColourId, colours.edge);
+    setColour (ComboBox::textColourId, colours.text);
+    setColour (ComboBox::backgroundColourId, colours.recess);
+    setColour (ComboBox::outlineColourId, colours.edge);
     setColour (ComboBox::arrowColourId, accent);
-    setColour (PopupMenu::backgroundColourId, rubber);
-    setColour (PopupMenu::textColourId, text);
+    setColour (PopupMenu::backgroundColourId, colours.rubber);
+    setColour (PopupMenu::textColourId, colours.text);
     setColour (PopupMenu::highlightedBackgroundColourId, selection);
     setColour (PopupMenu::highlightedTextColourId, selectedText);
-    setColour (Slider::textBoxTextColourId, text);
-    setColour (Slider::textBoxBackgroundColourId, recess);
-    setColour (Slider::textBoxOutlineColourId, edge);
+    setColour (Slider::textBoxTextColourId, colours.text);
+    setColour (Slider::textBoxBackgroundColourId, colours.recess);
+    setColour (Slider::textBoxOutlineColourId, colours.edge);
     setColour (Slider::textBoxHighlightColourId, accent.withAlpha (0.4f));
     setColour (Slider::trackColourId, accent);
     setColour (Slider::thumbColourId, accent);
     setColour (Slider::rotarySliderFillColourId, accent);
-    setColour (Slider::rotarySliderOutlineColourId, edge);
-    setColour (ScrollBar::thumbColourId, Colour (0xff77796c));
-    setColour (TooltipWindow::backgroundColourId, recess);
-    setColour (TooltipWindow::textColourId, text);
-    setColour (TooltipWindow::outlineColourId, edge);
+    setColour (Slider::rotarySliderOutlineColourId, colours.edge);
+    setColour (ScrollBar::thumbColourId, skin == xtp::EditorSkin::cottonCandy ? colours.muted : Colour (0xff77796c));
+    setColour (TooltipWindow::backgroundColourId, colours.recess);
+    setColour (TooltipWindow::textColourId, colours.text);
+    setColour (TooltipWindow::outlineColourId, colours.edge);
 }
 
 Font LookAndFeel::getTextButtonFont (TextButton& button, int height)
@@ -165,15 +188,17 @@ Font LookAndFeel::getPopupMenuFont() { return font (15.0f); }
 
 void LookAndFeel::drawButtonBackground (Graphics& g, Button& button, const Colour&, bool over, bool down)
 {
+    const bool cotton = skin == xtp::EditorSkin::cottonCandy;
     if (button.getProperties().contains ("wordmark"))
     {
         if (over || down || button.hasKeyboardFocus (true))
         {
             const auto bounds = button.getLocalBounds().toFloat().reduced (1.0f);
-            g.setColour (Colours::black.withAlpha (0.65f));
-            g.drawRoundedRectangle (bounds, 3.0f, 2.0f);
+            const auto radius = cotton ? 24.0f : 3.0f;
+            g.setColour (cotton ? accent : Colours::black.withAlpha (0.65f));
+            g.drawRoundedRectangle (bounds, radius, 2.0f);
             g.setColour (Colours::white.withAlpha (0.85f));
-            g.drawRoundedRectangle (bounds, 3.0f, 1.0f);
+            g.drawRoundedRectangle (bounds, radius, 1.0f);
         }
         return;
     }
@@ -181,27 +206,28 @@ void LookAndFeel::drawButtonBackground (Graphics& g, Button& button, const Colou
     const auto well = button.getLocalBounds().reduced (0, 1);
     const auto cap = well.withTrimmedBottom (1).translated (0, down ? 1 : 0);
     const bool selected = button.getToggleState();
-    g.setColour (Colours::black.withAlpha (0.70f));
-    g.fillRoundedRectangle (well.toFloat(), 4.5f);
+    const auto radius = cotton ? 7.0f : 4.5f;
+    g.setColour (cotton ? cottonCandy::berry.withAlpha (0.23f) : Colours::black.withAlpha (0.70f));
+    g.fillRoundedRectangle (well.toFloat(), radius);
 
     const Graphics::ScopedSaveState saved (g);
     Path edgeShape;
-    edgeShape.addRoundedRectangle (cap.toFloat(), 4.5f);
+    edgeShape.addRoundedRectangle (cap.toFloat(), radius);
     g.reduceClipRegion (edgeShape);
     g.setOpacity (1.0f);
     artwork::drawButton (g, cap, selected, button.getProperties().contains ("key"), skin);
 
     if (! button.isEnabled() || down || over)
     {
-        const auto shade = ! button.isEnabled() ? Colours::black.withAlpha (0.35f)
-                         : down ? Colours::black.withAlpha (0.20f) : Colours::white.withAlpha (0.10f);
+        const auto shade = ! button.isEnabled() ? (cotton ? Colours::white.withAlpha (0.50f) : Colours::black.withAlpha (0.35f))
+                         : down ? Colours::black.withAlpha (0.20f) : (cotton ? accent : Colours::white).withAlpha (0.10f);
         g.fillAll (shade);
     }
 
     if (button.hasKeyboardFocus (true))
     {
         g.setColour (selected ? findColour (TextButton::textColourOnId) : accent);
-        g.drawRoundedRectangle (cap.toFloat().reduced (1.5f), 3.0f, 1.0f);
+        g.drawRoundedRectangle (cap.toFloat().reduced (1.5f), radius - 1.5f, 1.0f);
     }
 }
 
@@ -216,18 +242,19 @@ void LookAndFeel::drawButtonText (Graphics& g, TextButton& button, bool over, bo
 void LookAndFeel::drawComboBox (Graphics& g, int w, int h, bool down, int, int, int, int, ComboBox& box)
 {
     const auto r = Rectangle<float> (0.0f, 0.0f, (float) w, (float) h).reduced (0.5f);
+    const auto radius = skin == xtp::EditorSkin::cottonCandy ? 7.0f : 4.0f;
     {
         const Graphics::ScopedSaveState saved (g);
         Path edgeShape;
-        edgeShape.addRoundedRectangle (r, 4.0f);
+        edgeShape.addRoundedRectangle (r, radius);
         g.reduceClipRegion (edgeShape);
-        artwork::drawButton (g, Rectangle<int> (w, h), false, false);
+        artwork::drawButton (g, Rectangle<int> (w, h), false, false, skin);
         if (down) g.fillAll (Colours::black.withAlpha (0.20f));
     }
     if (box.hasKeyboardFocus (true))
     {
         g.setColour (accent);
-        g.drawRoundedRectangle (r.reduced (1.0f), 3.0f, 1.0f);
+        g.drawRoundedRectangle (r.reduced (1.0f), radius - 1.0f, 1.0f);
     }
     auto centre = Point<float> (r.getRight() - 13.0f, r.getCentreY());
     Path arrow;
@@ -241,12 +268,13 @@ void LookAndFeel::drawLinearSlider (Graphics& g, int x, int y, int w, int h, flo
 {
     if (style == Slider::LinearBar)
     {
+        const auto& colours = panelColours (skin);
         const auto bounds = Rectangle<float> ((float) x, (float) y, (float) w, (float) h);
         const bool bipolar = slider.getMinimum() < 0.0 && slider.getMaximum() > 0.0;
         const float start = bipolar ? slider.getPositionOfValue (0.0) : bounds.getX();
         const auto from = jlimit (bounds.getX(), bounds.getRight(), jmin (start, pos));
         const auto to = jlimit (bounds.getX(), bounds.getRight(), jmax (start, pos));
-        g.setColour (recess);
+        g.setColour (colours.recess);
         g.fillRoundedRectangle (bounds, 3.0f);
         {
             const Graphics::ScopedSaveState saved (g);
@@ -257,12 +285,12 @@ void LookAndFeel::drawLinearSlider (Graphics& g, int x, int y, int w, int h, flo
             g.fillRect (bounds.withX (from).withRight (to));
             if (bipolar)
             {
-                g.setColour (muted.withAlpha (0.6f));
+                g.setColour (colours.muted.withAlpha (0.6f));
                 g.drawVerticalLine (roundToInt (start), bounds.getY() + 1.0f, bounds.getY() + 4.0f);
                 g.drawVerticalLine (roundToInt (start), bounds.getBottom() - 4.0f, bounds.getBottom() - 1.0f);
             }
         }
-        g.setColour (slider.hasKeyboardFocus (true) ? accent : edge);
+        g.setColour (slider.hasKeyboardFocus (true) ? accent : colours.edge);
         g.drawRoundedRectangle (bounds, 3.0f, 1.0f);
         return;
     }
@@ -291,6 +319,11 @@ void LookAndFeel::drawRotarySlider (Graphics& g, int x, int y, int w, int h, flo
     const auto point = [centre] (float distance, float angle) { return centre.getPointOnCircumference (distance, angle); };
     const float angle = jmap (pos, start, end);
     const auto rim = Rectangle<float> (2.0f * radius, 2.0f * radius).withCentre (centre);
+    if (skin == xtp::EditorSkin::cottonCandy)
+    {
+        cottonCandy::drawKnob (g, rim, angle, start, end, slider.hasKeyboardFocus (true));
+        return;
+    }
     const int ticks = chuck ? 11 : 7;
     for (int i = 0; i < ticks; ++i)
     {

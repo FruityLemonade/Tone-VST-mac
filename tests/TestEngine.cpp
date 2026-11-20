@@ -234,6 +234,20 @@ TEST_CASE ("T13 block size invariance", "[T13]")
     p.voices = 6;
     p.slice = 1;
 
+    p.rampOn = true;
+    p.rampLoop = 2;
+    p.rampTimeMs = 250.0;
+    p.lfo[0].sync = 2;
+    p.lfo[0].toRate = 7.0;
+    p.lfo[0].toPitch = -2.0;
+    p.lfo[1].shape = 6;
+    p.lfo[1].toGate = 0.3;
+    p.seqOn = true;
+    p.seqLen = 4;
+    p.steps[1].tie = true;
+    p.steps[2].on = false;
+    p.steps[3] = { true, false, 2, -7, 0.8f };
+
     const std::vector<MidiEvent> events {
         noteOn (100, 60), noteOn (30011, 72), bend (40000, 0.4f), noteOff (50000, 72),
         noteOff (70001, 60), noteOn (90000, 48, 0.5f), bend (100003, -1.0f), noteOff (150000, 48)
@@ -281,6 +295,16 @@ TEST_CASE ("T14 robustness", "[T14]")
     p.sPitch = 48.0;
     p.penvAmt = 48.0;
     p.jitter = 1.0;
+
+    p.rampOn = true;
+    p.rampStart = 8.0;
+    p.rampEnd = -8.0;
+    p.rampTimeMs = 1.0;
+    p.rampLoop = 2;
+    p.lfo[0].sync = 2;
+    p.lfo[0].ratio = 0;
+    p.lfo[0].toRate = 24.0;
+    p.lfo[0].toPitch = 24.0;
 
     for (int variant = 0; variant < 4; ++variant)
     {

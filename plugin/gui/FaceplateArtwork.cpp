@@ -1,4 +1,5 @@
 #include "FaceplateArtwork.h"
+#include "CottonCandyArtwork.h"
 #include "HammerLookAndFeel.h"
 
 #include "XtoneFaceplateData.h"
@@ -208,6 +209,7 @@ const Photo* photoFor (EditorSkin skin)
     using namespace XtoneFaceplateData;
     switch (skin)
     {
+        case EditorSkin::cottonCandy:
         case EditorSkin::hammerDrill:
             return nullptr;
         case EditorSkin::makita:
@@ -462,6 +464,7 @@ const KnobArtwork& knobFor (EditorSkin skin)
                 { { 186.8f, 172.3f }, { 221.3f, 198.2f }, 8.5f, Colour (0xfff4f4f2) }, photoNoonRotation, 0.455f, 0.876f);
             return hilti;
         }
+        case EditorSkin::cottonCandy:
         case EditorSkin::hammerDrill:
             break;
     }
@@ -542,6 +545,7 @@ void drawPhotoFrame (Graphics& g, const Photo& photo, Rectangle<int> bounds, Rec
 
 Rectangle<int> wordmarkBounds (int top, int dockX, EditorSkin skin)
 {
+    if (skin == EditorSkin::cottonCandy) return cottonCandy::wordmarkBounds (top, dockX);
     if (const auto* photo = photoFor (skin))
     {
         const auto& src = photo->geometry;
@@ -561,6 +565,12 @@ void drawFrame (Graphics& g, Rectangle<int> bounds, Rectangle<int> wave, Rectang
 {
     g.fillAll (Colour (0xff141413));
     if (wave.isEmpty() || rate.isEmpty() || dock.isEmpty()) return;
+
+    if (skin == EditorSkin::cottonCandy)
+    {
+        cottonCandy::drawFrame (g, bounds, wave.getY(), dock.getX(), keyArea (bounds, wave.getBottom()));
+        return;
+    }
 
     if (const auto* photo = photoFor (skin))
     {
@@ -610,6 +620,11 @@ void drawFrame (Graphics& g, Rectangle<int> bounds, Rectangle<int> wave, Rectang
 
 void drawWaveformPanel (Graphics& g, Rectangle<int> target, EditorSkin skin)
 {
+    if (skin == EditorSkin::cottonCandy)
+    {
+        cottonCandy::drawPearl (g, target.toFloat(), Colour (0xfffffcff), Colour (0xffffe9f3), 16.0f);
+        return;
+    }
     if (const auto* photo = photoFor (skin))
     {
         sliced (g, photo->image, photo->geometry.waveform, target, { 18, 16, 15, 16 },
@@ -621,6 +636,11 @@ void drawWaveformPanel (Graphics& g, Rectangle<int> target, EditorSkin skin)
 
 void drawRatePanel (Graphics& g, Rectangle<int> target, EditorSkin skin)
 {
+    if (skin == EditorSkin::cottonCandy)
+    {
+        cottonCandy::drawPearl (g, target.toFloat(), Colour (0xfffffbfd), Colour (0xffffe0ef), 16.0f);
+        return;
+    }
     if (const auto* photo = photoFor (skin))
     {
         sliced (g, photo->image, photo->geometry.ratePanel, target, { 12, 16, 12, 16 },
@@ -632,6 +652,11 @@ void drawRatePanel (Graphics& g, Rectangle<int> target, EditorSkin skin)
 
 void drawPresetDock (Graphics& g, Rectangle<int> target, EditorSkin skin)
 {
+    if (skin == EditorSkin::cottonCandy)
+    {
+        cottonCandy::drawPearl (g, target.toFloat(), Colour (0xfffff7fb), Colour (0xffffd9ea), 13.0f);
+        return;
+    }
     static const auto brushedMetal = materialTile ({ 981, 89, 69, 7 });
     if (const auto* photo = photoFor (skin))
     {
@@ -644,6 +669,11 @@ void drawPresetDock (Graphics& g, Rectangle<int> target, EditorSkin skin)
 
 void drawRateDisplay (Graphics& g, Rectangle<int> target, EditorSkin skin)
 {
+    if (skin == EditorSkin::cottonCandy)
+    {
+        cottonCandy::drawPearl (g, target.toFloat(), Colour (0xfff9fdff), Colour (0xffd9efff), 11.0f);
+        return;
+    }
     static const auto glass = materialTile ({ 730, 551, 126, 105 });
     if (const auto* photo = photoFor (skin))
     {
@@ -656,6 +686,11 @@ void drawRateDisplay (Graphics& g, Rectangle<int> target, EditorSkin skin)
 
 void drawButton (Graphics& g, Rectangle<int> target, bool selected, bool key, EditorSkin skin)
 {
+    if (skin == EditorSkin::cottonCandy)
+    {
+        cottonCandy::drawButton (g, target, selected);
+        return;
+    }
     if (selected && skin != EditorSkin::hammerDrill)
     {
         const auto face = target.toFloat().reduced (0.5f);
@@ -679,6 +714,11 @@ void drawButton (Graphics& g, Rectangle<int> target, bool selected, bool key, Ed
 
 void drawSlider (Graphics& g, Rectangle<int> track, Rectangle<float> grip, bool enabled, bool focused, EditorSkin skin)
 {
+    if (skin == EditorSkin::cottonCandy)
+    {
+        cottonCandy::drawSlider (g, track, grip, enabled, focused);
+        return;
+    }
     static const auto filledTrack = sliderTrack ({ 1018, 813, 33, 18 }, false);
     static const auto emptyTrack = sliderTrack ({ 1279, 813, 33, 18 }, true);
     static const auto metalGrip = mockup().getClippedImage ({ 1164, 806, 24, 33 });
@@ -738,8 +778,13 @@ Rectangle<int> keyArea (Rectangle<int> bounds, int bodyBottom)
     return Rectangle<int>::leftTopRightBottom (horizontalInset, top, bounds.getRight() - horizontalInset, bottom);
 }
 
-void drawKeyWell (Graphics& g, Rectangle<int> target)
+void drawKeyWell (Graphics& g, Rectangle<int> target, EditorSkin skin)
 {
+    if (skin == EditorSkin::cottonCandy)
+    {
+        cottonCandy::drawPearl (g, target.toFloat().expanded (7.0f, 5.0f), Colour (0xffffc8e2), Colour (0xffe58cb6), 12.0f);
+        return;
+    }
     g.setTiledImageFill (blackPlastic(), target.getX(), target.getY(), 1.0f);
     g.fillRect (target);
 }

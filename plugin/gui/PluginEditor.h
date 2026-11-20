@@ -5,6 +5,7 @@
 #include "HeaderBar.h"
 #include "ParamPanel.h"
 #include "RatePanel.h"
+#include "SequencerGrid.h"
 #include "WaveformView.h"
 
 class XtoneProcessor;
@@ -33,6 +34,9 @@ private:
     WaveformView waveform;
     RatePanel rate;
     ParamPanel params;
+    SequencerGrid sequence;
+    juce::Rectangle<int> waveFrame;
+    int sequenceTab = -1;
     juce::TextButton wordmark { "XTONE" };
     juce::OwnedArray<juce::TextButton> keys;
     juce::Rectangle<int> keyWell;

@@ -50,10 +50,13 @@ if (XTONE_BUILD_PLUGIN)
             plugin/assets/HammerDrillFaceplate.png
             plugin/assets/MakitaFaceplate.jpg
             plugin/assets/FestoolFaceplate.jpg
-            plugin/assets/HiltiFaceplate.jpg)
-    set_property(SOURCE plugin/gui/FaceplateArtwork.cpp APPEND PROPERTY
+            plugin/assets/HiltiFaceplate.jpg
+            plugin/assets/CottonCandyFur.jpg
+            plugin/assets/CottonCandyHeart.png)
+    set_property(SOURCE plugin/gui/FaceplateArtwork.cpp plugin/gui/CottonCandyArtwork.cpp APPEND PROPERTY
         INCLUDE_DIRECTORIES "$<TARGET_PROPERTY:XtoneFaceplate,INTERFACE_INCLUDE_DIRECTORIES>")
     target_sources(Xtone PRIVATE
+        plugin/gui/CottonCandyArtwork.cpp
         plugin/gui/FaceplateArtwork.cpp
         plugin/gui/ModulationPanels.cpp
         plugin/gui/ParameterControl.cpp
@@ -66,6 +69,7 @@ if (XTONE_BUILD_PLUGIN)
         plugin/gui/HammerLookAndFeel.cpp
         plugin/gui/RatePanel.cpp
         plugin/gui/WaveformView.cpp
+        plugin/gui/SequencerGrid.cpp
         plugin/gui/ParamPanel.cpp)
     target_include_directories(Xtone PRIVATE plugin)
     if (MSVC)

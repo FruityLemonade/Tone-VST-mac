@@ -41,10 +41,21 @@ RatePanel::RatePanel (XtoneProcessor& p) : proc (p)
     const auto choices = sourceParam->getAllValueStrings();
     const std::array<const char*, 3> ids { "bpm", "hz", "host_mult" };
 
+    constexpr const char* sourceHelp[] {
+        "Use an independent plugin tempo and a note division.",
+        "Set the retrigger frequency directly in Hertz.",
+        "Multiply the host tempo and apply a note division."
+    };
+    constexpr const char* dialHelp[] {
+        "Set the plugin tempo. Division sets how many hits occur for each beat.",
+        "Set hits per second. In Absolute key tracking, MIDI notes supply the rate.",
+        "Multiply the project tempo before applying Division."
+    };
     for (size_t i = 0; i < sources.size(); ++i)
     {
         auto& button = sources[i];
         button.setButtonText (i == 2 ? String::fromUTF8 ("Host ×") : choices[(int) i]);
+        button.setTooltip (sourceHelp[i]);
         button.setRadioGroupId (1, dontSendNotification);
         button.setClickingTogglesState (true);
         button.onClick = [this, i]
@@ -59,7 +70,7 @@ RatePanel::RatePanel (XtoneProcessor& p) : proc (p)
         dial.setSliderStyle (Slider::RotaryHorizontalVerticalDrag);
         dial.setTextBoxStyle (Slider::TextBoxBelow, i == 2, 136, 25);
         dial.setName (param->getName (64));
-        dial.setTooltip (param->getName (64) + String::fromUTF8 (" · Double-click to reset to the default value"));
+        dial.setTooltip (dialHelp[i]);
         dial.getProperties().set ("chuck", true);
         addChildComponent (dial);
         dialAttachments[i] = std::make_unique<State::SliderAttachment> (state, ids[i], dial);
@@ -83,6 +94,17 @@ RatePanel::RatePanel (XtoneProcessor& p) : proc (p)
     frequency.setBorderSize (BorderSize<int> (0));
     detail.setJustificationType (Justification::centredLeft);
     pitch.setJustificationType (Justification::centredRight);
+
+    division.setTooltip ("Set the note length between retrigger ticks.");
+    divisionLabel.setTooltip (division.getTooltip());
+    modifier.setTooltip ("Choose a straight, triplet, or dotted division.");
+    modifierLabel.setTooltip (modifier.getTooltip());
+    phaseLock.setTooltip ("Align the clock when host playback starts or jumps.");
+    smoothing.setTooltip ("Smooth changes to the base rate. Set to zero for immediate jumps.");
+    smoothingLabel.setTooltip (smoothing.getTooltip());
+    frequency.setTooltip ("Retrigger ticks per second. At high rates this determines the audible pitch.");
+    detail.setTooltip ("Tempo in BPM if each retrigger were a quarter note.");
+    pitch.setTooltip ("Nearest note in scientific and FL Studio notation, with tuning offset in cents.");
 
     division.setTitle (divisionLabel.getText());
     modifier.setTitle (modifierLabel.getText());
@@ -176,11 +198,16 @@ void RatePanel::paint (Graphics& g)
 
 void RatePanel::lookAndFeelChanged()
 {
-    const auto colour = hammer::ratePanelText (hammer::skinFor (*this));
+    const auto skin = hammer::skinFor (*this);
+    const auto colour = hammer::ratePanelText (skin);
     for (auto* label : { &rateTitle, &smoothingLabel, &divisionLabel, &modifierLabel })
         label->setColour (Label::textColourId, colour);
     phaseLock.setColour (ToggleButton::textColourId, colour);
     phaseLock.setColour (ToggleButton::tickColourId, colour);
+    const auto& colours = hammer::panelColours (skin);
+    frequency.setColour (Label::textColourId, colours.text);
+    pitch.setColour (Label::textColourId, colours.text);
+    detail.setColour (Label::textColourId, colours.muted);
 }
 
 void RatePanel::timerCallback()

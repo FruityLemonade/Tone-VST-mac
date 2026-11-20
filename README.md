@@ -25,35 +25,74 @@ Extract the ZIP if you have a prebuilt bundle, or [build XTONE from source](#bui
 
 The macOS bundles are ad hoc signed and have no Apple notarization.
 
-## Development status
-
-| Milestone | Scope | Status |
-|---|---|---|
-| M0 Foundation | Repository, CMake, CI, built-in kick, parameter editor | Complete |
-| M1 Core engine | BPM, Hz, and host-synced clock, note divisions, subsample timing, Cut and Declick, gate, pitch, sample loading and embedding, ADSR, pitch modes, glide, pitch bend, and live readouts | Implemented, pending acceptance testing |
-| M2 Slicing | Slice markers, waveform editing and zoom, transient detection, MIDI slice selection, scan, length, reverse, overlap, and pitch envelope | Available |
-| M3 Character | Oversampling, drive, clipping, DC filtering, mono, slice cycling, jitter, and Tune Snap | Available |
-| M4 Modulation | Ramp, LFO 1 and 2, and unison | Unison available |
-| M5 Sequencer | Step sequencer and grid | Planned |
-| M6 Release | Factory presets, documentation, and v1.0.0 | Factory presets available. v1.0.0 pending. |
-
-The editor exposes **Ramp**, **LFO 1**, **LFO 2**, and **Sequencer** controls with stable parameter IDs. Their audio processing is pending.
-
 ## Quick start
 
-- Click the **XTONE** wordmark to see the plugin version and choose **Hammer Drill**, **Makitone**, **Festone**, or **Hiltone**. XTONE saves the skin with each plugin instance in your DAW project. Preset changes keep the current skin.
-- In the **Rate** tab, choose **BPM** for **Plugin BPM** with a note **Division**, **Hz** for a direct frequency, or **Host ×** for the project tempo multiplied by the **Host Multiplier**. Turn the main dial to set the rate, or type a BPM or Hz value below it.
-- Play the **Root Note** to hear the selected rate. The default is MIDI note 60, shown as C4 in scientific pitch notation and C5 in FL Studio. In **Relative** key tracking, going up an octave doubles the rate. With **Key Tracking** set to **Absolute**, MIDI note 69 (A4) plays at 440 Hz by default, independent of the rate source.
-- Click **Load Sample…** or drag an audio file onto the editor. Dragging from the FL Studio browser is supported. Files up to 32 MB are embedded in the project. Larger files are stored by path.
-- Click a slice in the waveform to select it. Double-click to add a marker, drag its handle to move it, or right-click it to remove it. Open **Slices** and choose **Slice Evenly** or **Clear All Markers** to edit the whole sample.
-- Option-click (Alt-click on Windows) to hear a slice once through the output. Audition follows the playback window and direction and leaves the selected slice in place. When A and B use the same slice, Option-click a violet handle to audition B.
-- In **Slice** MIDI mode, notes select slices relative to your selection and **Slice Base Note**. The **Rate** tab controls how fast the slice retriggers.
-- Scroll over the waveform to zoom at the pointer. Pan with Shift and the mouse wheel, a horizontal trackpad gesture, or the scrollbar. Use **−** and **+** to zoom around the center, or click **Fit** to show the full sample.
-- Set **Sensitivity** and click **Transients** to analyze the entire sample in the background. Detected transients replace the existing slice markers, which you can then edit by hand. If the analysis finds no transients, it keeps the existing markers.
-- The rate display shows frequency in Hz, its BPM equivalent, and pitch in both scientific and FL Studio notation. Drag the arrow or end handle of a waveform bracket to trim that edge. The opposite edge stays in place, and **Start Scan** and **Length** update in the matching panel. The arrow follows the playback direction, and the white rail marks the playing slice.
-- In **Cycling**, choose a pattern and a B slice to alternate with the current A slice. B has its own playback window, direction, interpolation, mono setting, pitch, fine tune, and pitch envelope. **Pitch Offset B** adds a musical interval to **Sample Pitch B**. The waveform shows A in the skin's accent color and B in violet. Both slice selectors start at 1 and follow the number of slices.
-- In **Amp**, drag A, D, or R horizontally to adjust the time, or S vertically to adjust sustain level. Double-click a point to reset it or click a value to type an exact setting. The output meter shows stereo peaks after Output Gain and oversampling. Click **CLIP** to clear a held 0 dBFS warning.
-- **LFO 1** and **LFO 2** show a waveform preview. Drag the phase marker to set the start phase. Choose a timing mode to see its relevant control. The LFO modulation engine is pending.
+1. Add XTONE as an instrument and play a MIDI note to hear the built-in kick.
+2. Open **Rate**, choose **BPM**, and set **Plugin BPM** to 500 and **Division** to 1/16. MIDI note 60 plays about 33.33 Hz in the default **Relative** mode, equivalent to 2,000 quarter-note hits per minute.
+3. Load or drop a WAV, AIFF, FLAC, Ogg, or MP3 file onto the editor. Shorten **Length** in **Sample**, then move **Start Scan** to hear how a different part of the slice changes the tone.
+4. Add movement in **Motion** or **LFO 1 / 2**, or open **Sequencer** to vary slices, pitch, and level on each tick.
+
+Hover over a control, waveform handle, or step cell for a short explanation.
+
+## Skins
+
+Click the **XTONE** wordmark and choose a skin. **Cotton Candy** pairs pink fur with pearl-white controls, baby-blue accents, and rhinestone hearts. The skin belongs to the plugin instance and is saved with the DAW project. Factory and file presets keep the current skin.
+
+| Hammer Drill | Makitone |
+| --- | --- |
+| ![Hammer Drill skin on the Rate page](docs/screenshots/hammer-drill.jpg) | ![Makitone skin on the Rate page](docs/screenshots/makitone.jpg) |
+
+| Festone | Hiltone |
+| --- | --- |
+| ![Festone skin on the Rate page](docs/screenshots/festone.jpg) | ![Hiltone skin on the Rate page](docs/screenshots/hiltone.jpg) |
+
+![Cotton Candy skin on the Rate page](docs/screenshots/cotton-candy.jpg)
+
+## Controls
+
+| Page | Settings |
+| --- | --- |
+| **Rate** | **BPM** uses XTONE's own tempo with a straight, dotted, or triplet division. **Hz** sets hits per second directly. **Host ×** multiplies the project tempo before applying the division. **Host Phase Lock** aligns the clock at transport starts and jumps. **Rate Smoothing** softens rate changes. Set it to zero for immediate jumps. The display shows Hz, BPM equivalent, and pitch in scientific and FL Studio notation. |
+| **Pitch** | **Pitch** MIDI mode maps notes to retrigger pitch. **Relative** plays the selected rate at **Root Note** and doubles it one octave up. **Absolute** tunes directly from the **A4 Reference**, normally 440 Hz. **Slice** MIDI mode uses notes to select slices relative to **Slice Base Note** and the current slice. Transpose, fine tuning, glide, pitch bend, phase reset, and velocity sensitivity shape MIDI response. **Tune Snap** quantizes the base pitch in **Base** mode and also quantizes modulation in **All** mode. |
+| **Trigger** | **Cut** replaces the previous hit. **Overlap** lets hits ring together up to the voice limit. **Declick** fades hit edges, **Gate** limits hits to a fraction of the retrigger period, and **Jitter** varies their spacing. **Unison** runs up to eight independent clocks with symmetric detune, stereo width, and optional random starting phases. |
+| **Sample** | Choose **Slice**, shorten **Length**, and use **Start Scan** to move the playback window. **Reverse**, **Mono**, and **Interpolation** change how the sample is read. **Sample Pitch**, fine tuning, and the per-hit pitch envelope change the sample's playback speed independently of the retrigger clock. |
+| **Cycling** | Alternate A and B using **AB**, **AAB**, **ABB**, or **Random**. B has its own slice, window, direction, interpolation, mono setting, level, pitch, and pitch envelope. **Pitch Offset B** adds a musical interval to **Sample Pitch B**. |
+| **Motion** | **Ramp Enabled** sweeps the retrigger rate from **Start** to **End** in octaves relative to the base rate. **Time** controls the duration, **Curve** shapes the sweep, and **Repeat** holds the endpoint, loops, or alternates direction. **Restart on Legato** also restarts the ramp on overlapping notes. The endpoints are shown in BPM equivalent before LFOs and final rate snapping. |
+| **LFO 1 / 2** | Choose sine, triangle, rising or falling saw, square, sample-and-hold, or smooth random. **Free** uses Hz, **Host Sync** uses a note division at project tempo, and **Rate Ratio** locks one cycle to a fixed number of ticks on the first unison lane. **Start Phase** can be dragged in the preview and **Retrigger on Note** restarts the LFO on a MIDI note-on. Depths are bipolar. **Rate** and **Sample Pitch** update continuously, while **Start Scan** and **Gate** apply at each new hit. |
+| **Amp** | Set the note ADSR with the values or graph. Adjust **Drive** before soft or hard clipping, choose 1× to 8× oversampling, and set **Output Gain**. The stereo meter shows the final output level. Click **CLIP** to clear its held 0 dBFS warning. |
+
+MIDI note 60 is C4 in scientific notation and C5 in FL Studio.
+
+## Editing and auditioning slices
+
+- **Normalize** raises the sample peak to full scale.
+- Click the waveform to select a slice. Double-click to add a marker, drag it to move it, or right-click to delete it. **Slices** also offers **Slice Evenly** and **Clear All Markers**.
+- **Transients** analyzes the entire sample at the selected **Sensitivity**. Detected transients replace the markers and remain editable by hand. If analysis finds no transients, it keeps the existing markers.
+- Alt-click on Windows or Option-click on macOS to audition a slice once through the output. If A and B share a slice, audition B by clicking its violet handle with the modifier held.
+- Drag a playback handle to trim its edge while keeping the opposite edge in place. The waveform shows A in the skin accent and B in violet. The white rail indicates playback.
+- Scroll to zoom at the pointer. Pan with Shift-scroll, horizontal trackpad scrolling, or the scrollbar. Use **−**, **+**, and **Fit** to adjust the view from the toolbar.
+
+## Programming the sequencer
+
+Enable **Sequencer On** and choose a length from 1 to 32 steps. Each lane advances one step per retrigger tick. The highlight follows the first lane. **Reset on Note** returns the pattern to step 1 on the next tick after each note-on. Disable it to continue from the current position across notes.
+
+| Row | What it does |
+| --- | --- |
+| **On** | Enable a hit or leave a rest. A rest fades the previous sound using **Declick**. |
+| **Tie** | With **On** enabled, let the previous hit continue through this tick without a new hit. |
+| **Slice** | Choose a numbered slice. Enter **0** (shown as a dash) to follow the current sample or MIDI slice. |
+| **Pitch** | Offset sample playback by −24 to +24 semitones. |
+| **Velocity** | Set the step's hit level from 0 to 100%. |
+
+Click or drag across **On** and **Tie** to paint steps. Click a numeric cell to type a value or drag vertically to adjust it. With grid focus, use the arrow keys to move, Return to edit, and plus or minus to adjust. **Clear** turns all steps into rests. **Randomize** fills the current loop, and the arrows rotate it. Shortening the loop keeps the steps beyond its end.
+
+The sequencer takes priority over **Cycling**. At audio rates an evenly repeating 4-step pattern can introduce a tone at one quarter of the retrigger rate.
+
+![XTONE's sequencer showing a 16-step pattern and the sample waveform](docs/screenshots/sequencer.jpg)
+
+## Saving sounds and projects
+
+DAW projects and **Save** / **Load** in the preset bar store parameters, samples, markers, and all 32 sequencer steps. Sample files up to 32 MB are embedded. Larger files are saved by path, so keep the original at that location. A missing sample falls back to the built-in kick. The factory preset menu applies parameter settings to the current sample. Start with **Init**, **Speed Grid 500**, or **Melodic A440**.
 
 ## Building from source
 

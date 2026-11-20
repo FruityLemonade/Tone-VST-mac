@@ -5,6 +5,7 @@
 #include "ParameterControl.h"
 #include "../PluginProcessor.h"
 
+#include <cmath>
 #include <initializer_list>
 #include <utility>
 
@@ -32,6 +33,22 @@ public:
                     if (auto* parameter = dynamic_cast<RangedAudioParameter*> (p)) addControl (section, *parameter);
     }
 
+    void addRampReadout()
+    {
+        rampReadout.setFont (hammer::mono (13.0f));
+        rampReadout.setTooltip ("Ramp endpoints in BPM equivalent, before LFOs and final rate snapping.");
+        addAndMakeVisible (rampReadout);
+        startTimerHz (30);
+    }
+
+    void lookAndFeelChanged() override
+    {
+        const auto& colours = hammer::panelColours (*this);
+        rampReadout.setColour (Label::textColourId, colours.text);
+        for (auto* section : sections)
+            section->heading.setColour (Label::textColourId, colours.muted);
+    }
+
     void layoutFor (int width)
     {
         int y = 0;
@@ -56,6 +73,11 @@ public:
             }
             y += 7;
         }
+        if (rampReadout.getParentComponent() != nullptr)
+        {
+            rampReadout.setBounds (3, y, width - 6, 26);
+            y += 26;
+        }
         setSize (width, y);
     }
 
@@ -73,7 +95,6 @@ private:
         {
             section->heading.setText (title, dontSendNotification);
             section->heading.setFont (hammer::mono (11.0f, Font::bold));
-            section->heading.setColour (Label::textColourId, hammer::muted);
             section->heading.setBorderSize (BorderSize<int> (0));
             addAndMakeVisible (section->heading);
         }
@@ -100,7 +121,18 @@ private:
 
     void timerCallback() override
     {
-        if (assetVersion != processor.getAssetVersion()) updateSliceCounts();
+        if (! sliceControls.isEmpty() && assetVersion != processor.getAssetVersion()) updateSliceCounts();
+        if (rampReadout.getParentComponent() != nullptr && isShowing())
+        {
+            const auto raw = [this] (const char* id) { return processor.apvts.getRawParameterValue (id)->load(); };
+            const double base = processor.telemetry().rampBaseHz.load();
+            const auto endpoint = [&] (const char* id)
+            {
+                return String (60.0 * base * std::exp2 ((double) raw (id)), 1);
+            };
+            rampReadout.setText (base > 0.0 ? endpoint ("ramp_start") + String::fromUTF8 (" → ") + endpoint ("ramp_end") + " BPM eq."
+                                           : String::fromUTF8 ("Ramp endpoints · BPM eq."), dontSendNotification);
+        }
     }
 
     void updateSliceCounts()
@@ -111,6 +143,7 @@ private:
     }
 
     XtoneProcessor& processor;
+    Label rampReadout;
     OwnedArray<Section> sections;
     Array<ParameterControl*> sliceControls;
     int assetVersion = -1;
@@ -170,7 +203,7 @@ ParamPanel::ParamPanel (XtoneProcessor& p)
 
     auto motion = std::make_unique<ScrollingPage> (p);
     motion->page.addGroup ("ramp", "RAMP");
-    motion->page.addGroup ("seq", "SEQUENCER");
+    motion->page.addRampReadout();
     addPage ("Motion", std::move (motion));
     addPage ("LFO 1", hammer::makeLfoPanel (p.apvts, "lfo1"));
     addPage ("LFO 2", hammer::makeLfoPanel (p.apvts, "lfo2"));
@@ -189,7 +222,7 @@ void ParamPanel::showGroup (int index)
 
 void ParamPanel::paint (Graphics& g)
 {
-    hammer::drawRecess (g, getLocalBounds().toFloat());
+    hammer::drawRecess (g, getLocalBounds().toFloat(), hammer::skinFor (*this));
 }
 
 void ParamPanel::resized()

@@ -9,13 +9,15 @@ class XtoneProcessor;
 
 /// Waveform with independent selected and playing slices.
 /// Click selects a slice, Option-click auditions it, and the playback handles trim its window.
-class WaveformView : public juce::Component, public juce::SettableTooltipClient, private juce::Timer, private juce::ScrollBar::Listener
+class WaveformView : public juce::Component, public juce::TooltipClient, private juce::Timer, private juce::ScrollBar::Listener
 {
 public:
     explicit WaveformView (XtoneProcessor&);
     ~WaveformView() override;
 
+    juce::String getTooltip() override;
     void paint (juce::Graphics&) override;
+    void lookAndFeelChanged() override;
     void resized() override;
     void mouseMove (const juce::MouseEvent&) override;
     void mouseDown (const juce::MouseEvent&) override;

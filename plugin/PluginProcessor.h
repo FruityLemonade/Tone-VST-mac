@@ -62,6 +62,10 @@ public:
     void detectTransients (xtp::SampleAsset::Ptr asset, double sensitivity,
                            std::function<void (std::optional<int>)> finished);
 
+    xt::Sequence getSequence() const;
+    void setSequenceStep (int index, const xt::SequenceStep& step);
+    void setSequence (const xt::Sequence& steps);
+
     xtp::SampleAsset::Ptr getCurrentAsset() const;
     juce::String getStatusMessage() const;
     /// Incremented whenever the asset shown in the GUI changes.
@@ -79,10 +83,21 @@ private:
     void setOversampling (int index) noexcept;   // audio thread / prepare
     juce::ValueTree buildState();
     void restoreState (const juce::ValueTree& t);
+    void replaceSequence (const xt::Sequence& steps);
+    void readSequence (xt::Sequence& dest) const noexcept;
+    void snapshotSequence() noexcept;
 
     xtp::ParamSnapshot snapshot;
     xt::Engine engine;
     xt::EngineParams engineParams;
+
+    // Writes and saves are serialized off the audio thread. The audio thread
+    // takes one bounded snapshot attempt and retains the last complete pattern
+    // if a write is in progress.
+    mutable juce::CriticalSection sequenceLock;
+    std::array<std::atomic<uint64_t>, xt::kMaxSequenceSteps> sequenceWords;
+    std::atomic<unsigned> sequenceVersion { 0 };
+    unsigned audioSequenceVersion = 0;
 
     std::unique_ptr<juce::dsp::Oversampling<float>> oversamplers[3]; // 2x, 4x, 8x
     int osIndex { -1 };

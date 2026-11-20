@@ -5,7 +5,7 @@
 
 namespace xtp
 {
-enum class EditorSkin { hammerDrill, makita, festool, hilti };
+enum class EditorSkin { hammerDrill, makita, festool, hilti, cottonCandy };
 
 struct EditorSkinInfo
 {
@@ -18,7 +18,8 @@ inline constexpr std::array editorSkins {
     EditorSkinInfo { EditorSkin::hammerDrill, "hammer-drill", "Hammer Drill" },
     EditorSkinInfo { EditorSkin::makita, "makita", "Makitone" },
     EditorSkinInfo { EditorSkin::festool, "festool", "Festone" },
-    EditorSkinInfo { EditorSkin::hilti, "hilti", "Hiltone" }
+    EditorSkinInfo { EditorSkin::hilti, "hilti", "Hiltone" },
+    EditorSkinInfo { EditorSkin::cottonCandy, "cotton-candy", "Cotton Candy" }
 };
 
 inline EditorSkin editorSkinFromId (const juce::String& id)

@@ -18,8 +18,7 @@ void HitVoice::start (const HitStart& h, uint64_t newStamp) noexcept
     if (p.penvAmtSt != 0.0 && p.subOffset > 0.0)
         penv *= std::pow (p.penvCoef, p.subOffset);
     const double penvMul = p.penvAmtSt != 0.0 ? std::exp2 (penv / 12.0) : 1.0;
-    // pitch modulation for the fractional start is approximated by the start speed
-    const double travel = p.subOffset * p.speedRatio * penvMul;
+    const double travel = p.subOffset * p.speedRatio * p.startPitchRatio * penvMul;
     pos = p.reverse ? p.winEnd - travel : p.winStart + travel;
 }
 

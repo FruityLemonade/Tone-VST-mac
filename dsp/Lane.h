@@ -26,7 +26,8 @@ public:
     /// Fade out all voices (sequencer rest, etc.).
     void releaseAll (double fade) noexcept
     {
-        for (auto& v : voices) v.release (fade);
+        if (fade <= 0.0) killAll();
+        else for (auto& v : voices) v.release (fade);
     }
 
     void render (const SampleView& s, double pitchA, double pitchB, float& l, float& r) noexcept

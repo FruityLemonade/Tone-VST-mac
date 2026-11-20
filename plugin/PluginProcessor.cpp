@@ -4,6 +4,8 @@
 #include "Presets.h"
 #include "gui/PluginEditor.h"
 
+#include <bit>
+
 using namespace juce;
 
 namespace
@@ -24,7 +26,25 @@ void writeSavedState (MemoryBlock& dest, const ValueTree& state)
     out.write (kStateMagic, kStateMagicSize);
     state.writeToStream (out);
 }
-constexpr int kStateVersion = 2;
+constexpr int kStateVersion = 3;
+
+static_assert (std::atomic<uint64_t>::is_always_lock_free);
+
+uint64_t encodeStep (const xt::SequenceStep& step)
+{
+    const auto slice = (uint64_t) (std::clamp (step.slice, -1, 127) + 1);
+    const auto pitch = (uint64_t) (std::clamp (step.pitch, -24, 24) + 24);
+    const float velocity = std::isfinite (step.velocity) ? std::clamp (step.velocity, 0.0f, 1.0f) : 1.0f;
+    return std::bit_cast<uint32_t> (velocity) | (slice << 32) | (pitch << 40)
+         | ((uint64_t) step.on << 46) | ((uint64_t) step.tie << 47);
+}
+
+xt::SequenceStep decodeStep (uint64_t word)
+{
+    return { (word & (uint64_t { 1 } << 46)) != 0, (word & (uint64_t { 1 } << 47)) != 0,
+             (int) ((word >> 32) & 0xffu) - 1, (int) ((word >> 40) & 0x3fu) - 24,
+             std::bit_cast<float> ((uint32_t) word) };
+}
 
 void copyLegacyPlaybackToB (ValueTree& params)
 {
@@ -49,6 +69,7 @@ XtoneProcessor::XtoneProcessor()
       apvts (*this, nullptr, "PARAMS", xtp::createParameterLayout()),
       snapshot (apvts)
 {
+    for (auto& step : sequenceWords) step.store (encodeStep ({}));
     events.reserve (4096);
     zeroBuffer.setSize (2, kChunk);
     zeroBuffer.clear();
@@ -143,7 +164,7 @@ void XtoneProcessor::processBlock (AudioBuffer<float>& buffer, MidiBuffer& midi)
         {
             if (auto bpm = pos->getBpm()) { hostInfo.bpm = *bpm; hostInfo.valid = true; }
             if (auto ppq = pos->getPpqPosition()) hostInfo.ppq = *ppq;
-            else hostInfo.valid = false;
+            else hostInfo.valid = false; // BPM can still be used by tempo-synced LFOs
             hostInfo.playing = pos->getIsPlaying();
         }
     }
@@ -160,6 +181,7 @@ void XtoneProcessor::processBlock (AudioBuffer<float>& buffer, MidiBuffer& midi)
         const int factor = 1 << osIndex;
 
         snapshot.read (engineParams);
+        if (engineParams.seqOn) snapshotSequence();
         engine.setParams (engineParams);
         auto request = auditionRequest.load (std::memory_order_acquire);
         if (request != 0 && audioAsset != nullptr && (uint32_t) (request >> 32) == audioAsset->publicationId
@@ -328,6 +350,64 @@ String XtoneProcessor::getStatusMessage() const
     return statusMessage;
 }
 
+// ------------------------------------------------------------------ sequencer
+
+void XtoneProcessor::readSequence (xt::Sequence& dest) const noexcept
+{
+    for (size_t i = 0; i < dest.size(); ++i)
+        dest[i] = decodeStep (sequenceWords[i].load());
+}
+
+xt::Sequence XtoneProcessor::getSequence() const
+{
+    const ScopedLock lock (sequenceLock);
+    xt::Sequence steps;
+    readSequence (steps);
+    return steps;
+}
+
+void XtoneProcessor::snapshotSequence() noexcept
+{
+    const auto version = sequenceVersion.load();
+    if (version == audioSequenceVersion || version % 2 != 0) return;
+
+    xt::Sequence steps;
+    readSequence (steps);
+    if (sequenceVersion.load() == version)
+    {
+        engineParams.steps = steps;
+        audioSequenceVersion = version;
+    }
+}
+
+void XtoneProcessor::setSequenceStep (int index, const xt::SequenceStep& step)
+{
+    const auto word = encodeStep (step);
+    {
+        const ScopedLock lock (sequenceLock);
+        auto& target = sequenceWords[(size_t) index];
+        if (target.load() == word) return;
+        ++sequenceVersion;
+        target.store (word);
+        ++sequenceVersion;
+    }
+    updateHostDisplay (AudioProcessorListener::ChangeDetails().withNonParameterStateChanged (true));
+}
+
+void XtoneProcessor::replaceSequence (const xt::Sequence& steps)
+{
+    const ScopedLock lock (sequenceLock);
+    ++sequenceVersion;
+    for (size_t i = 0; i < steps.size(); ++i) sequenceWords[i].store (encodeStep (steps[i]));
+    ++sequenceVersion;
+}
+
+void XtoneProcessor::setSequence (const xt::Sequence& steps)
+{
+    replaceSequence (steps);
+    updateHostDisplay (AudioProcessorListener::ChangeDetails().withNonParameterStateChanged (true));
+}
+
 // ------------------------------------------------------------------ programs
 
 int XtoneProcessor::getNumPrograms() { return (int) xtp::factoryPresets().size(); }
@@ -360,7 +440,18 @@ ValueTree XtoneProcessor::buildState()
         root.appendChild (a->getSampleTree(), nullptr);
         root.appendChild (a->getSlicesTree(), nullptr);
     }
-    // SEQ is added with the step sequencer (M5)
+    ValueTree sequence ("SEQ");
+    for (const auto& step : getSequence())
+    {
+        ValueTree entry ("STEP");
+        entry.setProperty ("on", step.on, nullptr);
+        entry.setProperty ("tie", step.tie, nullptr);
+        entry.setProperty ("slice", step.slice, nullptr);
+        entry.setProperty ("pitch", step.pitch, nullptr);
+        entry.setProperty ("vel", step.velocity, nullptr);
+        sequence.appendChild (entry, nullptr);
+    }
+    root.appendChild (sequence, nullptr);
     return root;
 }
 
@@ -378,6 +469,20 @@ void XtoneProcessor::getStateInformation (MemoryBlock& dest)
 void XtoneProcessor::restoreState (const ValueTree& root)
 {
     if (! root.hasType ("XTONE_STATE")) return;
+
+    xt::Sequence steps;
+    const auto sequence = root.getChildWithName ("SEQ");
+    size_t index = 0;
+    for (const auto& entry : sequence)
+    {
+        if (index == steps.size()) break;
+        if (! entry.hasType ("STEP")) continue;
+        steps[index++] = { (bool) entry.getProperty ("on", true), (bool) entry.getProperty ("tie", false),
+                           (int) entry.getProperty ("slice", -1), (int) entry.getProperty ("pitch", 0),
+                           (float) entry.getProperty ("vel", 1.0f) };
+    }
+    replaceSequence (steps);
+
     if (auto params = root.getChildWithName (apvts.state.getType()); params.isValid())
     {
         if ((int) root.getProperty ("stateVersion", 1) < 2)
@@ -429,6 +534,7 @@ bool XtoneProcessor::loadStateFromFile (const File& f)
     const auto state = readSavedState (mb.getData(), mb.getSize());
     if (! state.hasType ("XTONE_STATE")) return false;
     restoreState (state);
+    updateHostDisplay (AudioProcessorListener::ChangeDetails().withNonParameterStateChanged (true));
     return true;
 }
 

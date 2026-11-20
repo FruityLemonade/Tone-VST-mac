@@ -12,6 +12,7 @@ public:
     void setSliceCount (int count);
     int preferredHeight() const noexcept { return style == Style::knob ? 96 : 36; }
     void resized() override;
+    void lookAndFeelChanged() override;
 
 private:
     using State = juce::AudioProcessorValueTreeState;

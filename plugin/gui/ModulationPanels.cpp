@@ -13,13 +13,13 @@ namespace
 {
 using State = AudioProcessorValueTreeState;
 
-void drawPlot (Graphics& g, Rectangle<float> panel, Rectangle<float> plot)
+void drawPlot (Graphics& g, Rectangle<float> panel, Rectangle<float> plot, const hammer::PanelColours& colours)
 {
-    g.setColour (hammer::recess);
+    g.setColour (colours.recess);
     g.fillRoundedRectangle (panel, 6.0f);
-    g.setColour (hammer::edge);
+    g.setColour (colours.edge);
     g.drawRoundedRectangle (panel.reduced (0.5f), 6.0f, 1.0f);
-    g.setColour (hammer::edge.withAlpha (0.55f));
+    g.setColour (colours.edge.withAlpha (0.55f));
     for (int i = 0; i <= 4; ++i)
     {
         const auto fraction = (float) i / 4.0f;
@@ -52,7 +52,8 @@ public:
         const auto panel = getLocalBounds().toFloat().reduced (1.0f);
         const auto plot = plotArea();
         if (plot.isEmpty()) return;
-        drawPlot (g, panel, plot);
+        const auto& colours = hammer::panelColours (*this);
+        drawPlot (g, panel, plot, colours);
         const auto accent = hammer::accentFor (*this);
 
         const auto h = handles();
@@ -80,7 +81,7 @@ public:
         g.fillPath (area);
 
         constexpr float dashes[] { 3.0f, 4.0f };
-        g.setColour (hammer::muted.withAlpha (0.6f));
+        g.setColour (colours.muted.withAlpha (0.6f));
         g.drawDashedLine ({ h[2].x, plot.getY(), h[2].x, plot.getBottom() }, dashes, 2, 1.0f);
         g.setColour (accent);
         g.strokePath (curve, PathStrokeType (2.0f));
@@ -92,7 +93,7 @@ public:
             const auto left = stage == 0 ? start.x : h[(size_t) (stage - 1)].x;
             const auto right = h[(size_t) stage].x;
             g.reduceClipRegion (Rectangle<float> (left, plot.getY() - 2.0f, right - left, plot.getHeight() + 4.0f).getSmallestIntegerContainer());
-            g.setColour (hammer::text);
+            g.setColour (colours.text);
             g.strokePath (curve, PathStrokeType (2.6f));
         }
 
@@ -102,24 +103,24 @@ public:
         for (size_t i = 0; i < h.size(); ++i)
         {
             const auto point = Rectangle<float> (10.0f, 10.0f).withCentre (h[i]);
-            g.setColour ((int) i == dragged ? hammer::text : accent);
+            g.setColour ((int) i == dragged ? colours.text : accent);
             g.fillEllipse (point);
             g.setColour (hammer::ink);
             g.drawEllipse (point.reduced (0.5f), 1.0f);
-            g.setColour (hammer::text);
+            g.setColour (colours.text);
             const auto caption = Rectangle<float> (15.0f, 14.0f).withCentre (h[i] + captionOffsets[i]);
             g.drawText (String::charToString ((juce_wchar) "ADSR"[i]), caption, Justification::centred);
         }
 
         const auto meter = Rectangle<float> (5.0f, plot.getHeight()).withPosition (plot.getRight() + 12.0f, plot.getY());
-        g.setColour (hammer::edge);
+        g.setColour (colours.edge);
         g.fillRoundedRectangle (meter, 2.0f);
         const float level = jlimit (0.0f, 1.0f, liveLevel);
         g.setColour (accent);
         g.fillRoundedRectangle (meter.withTop (meter.getBottom() - meter.getHeight() * level), 2.0f);
 
         static constexpr const char* stageNames[] { "", "ATTACK", "DECAY", "SUSTAIN", "RELEASE" };
-        g.setColour (hammer::muted);
+        g.setColour (colours.muted);
         g.setFont (hammer::mono (10.5f, Font::bold));
         auto heading = panel.reduced (10.0f, 3.0f).removeFromTop (15.0f);
         g.drawText ("AMP ENVELOPE", heading, Justification::centredLeft);
@@ -252,12 +253,13 @@ public:
 
     void paint (Graphics& g) override
     {
+        const auto& colours = hammer::panelColours (*this);
         const auto panel = getLocalBounds().toFloat().reduced (0.5f);
-        g.setColour (hammer::recess);
+        g.setColour (colours.recess);
         g.fillRoundedRectangle (panel, 5.0f);
-        g.setColour (hammer::edge);
+        g.setColour (colours.edge);
         g.drawRoundedRectangle (panel, 5.0f, 1.0f);
-        g.setColour (hammer::muted);
+        g.setColour (colours.muted);
         g.setFont (hammer::mono (10.5f, Font::bold));
         g.drawText ("OUTPUT PEAK  dBFS", 8, 4, getWidth() - 65, 17, Justification::centredLeft);
 
@@ -267,20 +269,20 @@ public:
         for (size_t channel = 0; channel < level.size(); ++channel)
         {
             const int y = 27 + (int) channel * 13;
-            g.setColour (hammer::muted);
+            g.setColour (colours.muted);
             g.drawText (channel == 0 ? "L" : "R", 7, y - 2, 12, 12, Justification::centred);
-            g.setColour (hammer::edge);
+            g.setColour (colours.edge);
             g.fillRoundedRectangle (Rectangle<float> (left, (float) y, right - left, 7.0f), 2.0f);
             g.setColour (accent);
             g.fillRoundedRectangle (Rectangle<float> (left, (float) y, xAt (level[channel]) - left, 7.0f), 2.0f);
             if (peak[channel] > -48.0f)
             {
-                g.setColour (hammer::text);
+                g.setColour (colours.text);
                 g.fillRect (xAt (peak[channel]) - 1.0f, (float) y - 1.0f, 2.0f, 9.0f);
             }
         }
 
-        g.setColour (hammer::muted);
+        g.setColour (colours.muted);
         g.setFont (hammer::mono (9.5f));
         for (const int db : { -48, -24, -12, -6, 0 })
             g.drawText (String (db), roundToInt (xAt ((float) db)) - 12, 52, 24, 14, Justification::centred);
@@ -290,7 +292,9 @@ private:
     void updateClip()
     {
         const bool active = processor.hasOutputClipped();
-        const auto colour = active ? Colour (0xffff6556) : hammer::muted;
+        const auto skin = hammer::skinFor (*this);
+        const auto warning = skin == xtp::EditorSkin::cottonCandy ? Colour (0xffa62642) : Colour (0xffff6556);
+        const auto colour = active ? warning : hammer::panelColours (skin).muted;
         if (! clip.isColourSpecified (TextButton::textColourOffId) || clip.findColour (TextButton::textColourOffId) != colour)
             clip.setColour (TextButton::textColourOffId, colour);
     }
@@ -431,7 +435,8 @@ float previewWave (int shape, float phase)
             const int index = jmin (7, (int) position);
             const float t = position - (float) index;
             return shape == 5 ? steps[(size_t) index]
-                              : jmap (t * t * (3.0f - 2.0f * t), steps[(size_t) index], steps[(size_t) index + 1]);
+                              : jmap (0.5f - 0.5f * std::cos (MathConstants<float>::pi * t),
+                                      steps[(size_t) index], steps[(size_t) index + 1]);
         }
     }
 }
@@ -456,7 +461,8 @@ public:
         auto panel = getLocalBounds().toFloat().reduced (1.0f);
         const auto plot = plotArea();
         if (plot.isEmpty()) return;
-        drawPlot (g, panel, plot);
+        const auto& colours = hammer::panelColours (*this);
+        drawPlot (g, panel, plot, colours);
         const int wave = (int) shape.convertFrom0to1 (shape.getValue());
         const float centreY = plot.getCentreY();
         const float amplitude = plot.getHeight() * 0.42f;
@@ -472,14 +478,14 @@ public:
         g.strokePath (line, PathStrokeType (2.0f));
 
         const auto position = plot.getX() + plot.getWidth() * phase.getValue();
-        g.setColour (hammer::text);
+        g.setColour (colours.text);
         g.drawLine (position, plot.getY(), position, plot.getBottom(), 1.4f);
         Path caret;
         caret.addTriangle (position - 4.0f, plot.getY() - 4.0f, position + 4.0f, plot.getY() - 4.0f, position, plot.getY() + 3.0f);
         g.fillPath (caret);
         g.setFont (hammer::font (11.5f, Font::bold));
-        g.setColour (hammer::muted);
-        g.drawFittedText ("Waveform preview (modulation pending)", panel.reduced (8.0f, 4.0f).removeFromTop (15.0f).toNearestInt(),
+        g.setColour (colours.muted);
+        g.drawFittedText ("Waveform preview", panel.reduced (8.0f, 4.0f).removeFromTop (15.0f).toNearestInt(),
                           Justification::centredLeft, 1);
     }
 
@@ -541,10 +547,14 @@ public:
             addAndMakeVisible (*controls[i]);
         }
         depthLabel.setText ("MODULATION DEPTH", dontSendNotification);
-        depthLabel.setColour (Label::textColourId, hammer::muted);
         depthLabel.setFont (hammer::mono (11.0f, Font::bold));
         addAndMakeVisible (depthLabel);
         timingAttachment.sendInitialUpdate();
+    }
+
+    void lookAndFeelChanged() override
+    {
+        depthLabel.setColour (Label::textColourId, hammer::panelColours (*this).muted);
     }
 
     void resized() override

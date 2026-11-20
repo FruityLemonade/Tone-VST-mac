@@ -15,8 +15,9 @@ HeaderBar::HeaderBar (XtoneProcessor& p) : proc (p)
     presets.setTitle ("Factory Preset");
     load.setTitle ("Load preset from file");
     save.setTitle ("Save preset to file");
-    load.setTooltip ("Load preset from file");
-    save.setTooltip ("Save preset to file");
+    presets.setTooltip ("Apply a factory sound to the current sample.");
+    load.setTooltip ("Restore the sound, sample, slices, and sequence from an .xtone file.");
+    save.setTooltip ("Save the sound, sample, slices, and sequence as an .xtone file.");
     for (int i = 0; i < proc.getNumPrograms(); ++i)
         presets.addItem (proc.getProgramName (i), i + 1);
     timerCallback();
@@ -76,8 +77,9 @@ void HeaderBar::resized()
 void HeaderBar::paint (Graphics& g)
 {
     const auto dock = presetDockBounds();
-    hammer::artwork::drawPresetDock (g, dock, hammer::skinFor (*this));
-    g.setColour (hammer::ink);
+    const auto skin = hammer::skinFor (*this);
+    hammer::artwork::drawPresetDock (g, dock, skin);
+    g.setColour (skin == xtp::EditorSkin::cottonCandy ? hammer::panelColours (skin).text : hammer::ink);
     g.setFont (hammer::font (11.0f, Font::bold));
     g.drawText ("PRESET", dock.withTrimmedLeft (14), Justification::centredLeft);
 }
