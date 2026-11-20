@@ -9,12 +9,14 @@ class XtoneProcessor;
 class RatePanel : public juce::Component, private juce::Timer
 {
 public:
+    bool showsDivisions() const noexcept { return source != 1; }
     explicit RatePanel (XtoneProcessor&);
     void paint (juce::Graphics&) override;
     void resized() override;
     void lookAndFeelChanged() override;
 
 private:
+    void layoutTeddyBelly();
     void timerCallback() override;
     void setSource (int);
 

@@ -18,6 +18,7 @@ public:
     juce::String getTooltip() override;
     void paint (juce::Graphics&) override;
     void lookAndFeelChanged() override;
+    void setTeddyLayout (bool);
     void resized() override;
     void mouseMove (const juce::MouseEvent&) override;
     void mouseDown (const juce::MouseEvent&) override;
@@ -64,6 +65,7 @@ private:
     juce::Rectangle<int> plotArea() const;
     juce::Rectangle<int> waveArea() const;
     bool usesTwoToolbarRows() const;
+    bool teddyLayout = false;
     double xToFrame (float x) const;
     float frameToX (double frame) const;
     int markerAt (float x) const;

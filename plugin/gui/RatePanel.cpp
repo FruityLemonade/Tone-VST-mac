@@ -58,6 +58,7 @@ RatePanel::RatePanel (XtoneProcessor& p) : proc (p)
         button.setTooltip (sourceHelp[i]);
         button.setRadioGroupId (1, dontSendNotification);
         button.setClickingTogglesState (true);
+        button.getProperties().set ("teddyPrinted", i == 0 ? 2 : 1);
         button.onClick = [this, i]
         {
             if (sources[i].getToggleState())
@@ -108,6 +109,8 @@ RatePanel::RatePanel (XtoneProcessor& p) : proc (p)
 
     division.setTitle (divisionLabel.getText());
     modifier.setTitle (modifierLabel.getText());
+    division.getProperties().set ("teddyField", true);
+    modifier.getProperties().set ("teddyField", true);
     division.addItemList (state.getParameter ("division")->getAllValueStrings(), 1);
     modifier.addItemList (state.getParameter ("div_mod")->getAllValueStrings(), 1);
     addAndMakeVisible (division);
@@ -139,18 +142,28 @@ void RatePanel::setSource (int next)
         dials[i].setVisible (selected);
     }
 
-    const bool hasDivision = source != 1;
+    const bool hasDivision = showsDivisions();
     for (Component* component : std::array<Component*, 4> { &division, &modifier, &divisionLabel, &modifierLabel })
         component->setVisible (hasDivision);
     phaseLock.setVisible (source == 2);
     resized();
     timerCallback();
+    repaint();
 }
 
 void RatePanel::resized()
 {
+    if (hammer::skinFor (*this) == xtp::EditorSkin::cottonCandy)
+    {
+        layoutTeddyBelly();
+        return;
+    }
     auto r = getLocalBounds().reduced (16, 12);
     if (r.isEmpty()) return;
+
+    smoothingLabel.setVisible (true);
+    divisionLabel.setVisible (showsDivisions());
+    modifierLabel.setVisible (showsDivisions());
 
     rateTitle.setBounds (r.removeFromTop (19));
     display = r.removeFromTop (76);
@@ -189,9 +202,32 @@ void RatePanel::resized()
         dial.setBounds (r.withSizeKeepingCentre (jmin (r.getWidth(), r.getHeight()), r.getHeight()));
 }
 
+void RatePanel::layoutTeddyBelly()
+{
+    divisionLabel.setVisible (false);
+    modifierLabel.setVisible (false);
+    smoothingLabel.setVisible (false);
+    rateTitle.setBounds (29, 19, 153, 17);
+    frequency.setFont (hammer::font (36.0f, Font::bold));
+    frequency.setBounds (41, 42, 273, 36);
+    detail.setBounds (41, 78, 129, 17);
+    pitch.setBounds (172, 78, 143, 17);
+    sources[0].setBounds (27, 105, 98, 29);
+    sources[1].setBounds (129, 105, 98, 29);
+    sources[2].setBounds (230, 105, 97, 29);
+
+    for (auto& dial : dials)
+        dial.setBounds (32, 135, 278, source == 2 ? 249 : 273);
+    phaseLock.setBounds (102, 386, 209, 22);
+    division.setBounds (26, 424, 110, 23);
+    modifier.setBounds (147, 424, 180, 23);
+    smoothing.setBounds (119, 450, 208, 25);
+}
+
 void RatePanel::paint (Graphics& g)
 {
     const auto skin = hammer::skinFor (*this);
+    if (skin == xtp::EditorSkin::cottonCandy) return;
     hammer::artwork::drawRatePanel (g, getLocalBounds(), skin);
     hammer::artwork::drawRateDisplay (g, display, skin);
 }
@@ -208,6 +244,7 @@ void RatePanel::lookAndFeelChanged()
     frequency.setColour (Label::textColourId, colours.text);
     pitch.setColour (Label::textColourId, colours.text);
     detail.setColour (Label::textColourId, colours.muted);
+    resized();
 }
 
 void RatePanel::timerCallback()

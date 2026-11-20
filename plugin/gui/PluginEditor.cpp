@@ -1,5 +1,6 @@
 #include "PluginEditor.h"
 
+#include "CottonCandyArtwork.h"
 #include "FaceplateArtwork.h"
 
 #include "../PluginProcessor.h"
@@ -112,17 +113,18 @@ private:
 XtoneEditor::XtoneEditor (XtoneProcessor& p)
     : AudioProcessorEditor (p), proc (p), header (p), waveform (p), rate (p), params (p), sequence (p)
 {
-    addAndMakeVisible (header);
-    addAndMakeVisible (waveform);
-    addAndMakeVisible (rate);
-    addChildComponent (params);
-    addChildComponent (sequence);
+    addAndMakeVisible (canvas);
+    canvas.addAndMakeVisible (header);
+    canvas.addAndMakeVisible (waveform);
+    canvas.addAndMakeVisible (rate);
+    canvas.addChildComponent (params);
+    canvas.addChildComponent (sequence);
     wordmark.getProperties().set ("wordmark", true);
     wordmark.setTitle ("About XTONE and skin settings");
     wordmark.setTooltip ("About XTONE and skin settings");
     wordmark.setMouseCursor (MouseCursor::PointingHandCursor);
     wordmark.onClick = [this] { about->show(); };
-    addAndMakeVisible (wordmark);
+    canvas.addAndMakeVisible (wordmark);
 
     auto names = params.getPageNames();
     sequenceTab = names.size();
@@ -144,6 +146,7 @@ XtoneEditor::XtoneEditor (XtoneProcessor& p)
     {
         auto* key = keys.add (new TextButton (names[i]));
         key->getProperties().set ("key", true);
+        key->getProperties().set ("teddyPrinted", i == 0 ? 2 : 1);
         key->setTooltip (tabHelp[i]);
         key->setRadioGroupId (2, dontSendNotification);
         key->setClickingTogglesState (true);
@@ -151,7 +154,7 @@ XtoneEditor::XtoneEditor (XtoneProcessor& p)
         {
             if (key->getToggleState()) selectGroup (i);
         };
-        addAndMakeVisible (key);
+        canvas.addAndMakeVisible (key);
     }
 
     theme.setSkin (p.getEditorSkin());
@@ -180,8 +183,7 @@ void XtoneEditor::updateSkin()
     theme.setSkin (skin);
     sendLookAndFeelChange();
     about->syncSelection();
-    const auto dockX = header.getX() + header.presetDockBounds().getX();
-    wordmark.setBounds (hammer::artwork::wordmarkBounds (waveform.getY(), dockX, skin));
+    resized();
 }
 
 void XtoneEditor::selectGroup (int index)
@@ -197,8 +199,17 @@ void XtoneEditor::selectGroup (int index)
 
 void XtoneEditor::paint (Graphics& g)
 {
-    const auto dock = header.presetDockBounds().translated (header.getX(), header.getY());
     const auto skin = theme.getSkin();
+    if (skin == xtp::EditorSkin::cottonCandy)
+    {
+        if (getWidth() * canvas.getHeight() != getHeight() * canvas.getWidth())
+            hammer::cottonCandy::drawSurround (g, getLocalBounds());
+        g.addTransform (canvas.getTransform());
+        hammer::cottonCandy::drawFaceplate (g, rate.isVisible(), sequence.isVisible(), rate.showsDivisions());
+        if (params.isVisible()) hammer::artwork::drawRatePanel (g, params.getBounds(), skin);
+        return;
+    }
+    const auto dock = header.presetDockBounds().translated (header.getX(), header.getY());
     hammer::artwork::drawFrame (g, getLocalBounds(), waveFrame, rate.getBounds(), dock, skin);
     if (params.isVisible()) hammer::artwork::drawRatePanel (g, params.getBounds(), skin);
     hammer::artwork::drawKeyWell (g, keyWell, skin);
@@ -206,7 +217,17 @@ void XtoneEditor::paint (Graphics& g)
 
 void XtoneEditor::resized()
 {
-    auto content = getLocalBounds().reduced (28, 20);
+    if (getLocalBounds().isEmpty()) return;
+    if (about != nullptr) about->setBounds (getLocalBounds());
+    if (theme.getSkin() == xtp::EditorSkin::cottonCandy)
+    {
+        layoutTeddyBelly();
+        return;
+    }
+    canvas.setTransform (AffineTransform());
+    canvas.setBounds (getLocalBounds());
+    waveform.setTeddyLayout (false);
+    auto content = canvas.getLocalBounds().reduced (28, 20);
     if (content.isEmpty()) return;
     header.setBounds (content.removeFromTop (57));
     content.removeFromTop (10);
@@ -241,7 +262,36 @@ void XtoneEditor::resized()
     else waveform.setBounds (waveFrame);
     const auto dockX = header.getX() + header.presetDockBounds().getX();
     wordmark.setBounds (hammer::artwork::wordmarkBounds (waveform.getY(), dockX, theme.getSkin()));
-    if (about != nullptr) about->setBounds (getLocalBounds());
+}
+
+void XtoneEditor::layoutTeddyBelly()
+{
+    using namespace hammer::cottonCandy;
+    canvas.setBounds (0, 0, canvasWidth, canvasHeight);
+    canvas.setTransform (RectanglePlacement (RectanglePlacement::centred)
+                             .getTransformToFit (canvas.getLocalBounds().toFloat(), getLocalBounds().toFloat()));
+
+    header.setBounds (596, 36, 348, 65);
+    wordmark.setBounds (65, 30, 313, 68);
+    const Rectangle<int> slots[] {
+        { 62, 628, 78, 34 }, { 142, 628, 67, 34 }, { 211, 628, 73, 34 },
+        { 285, 628, 74, 34 }, { 361, 628, 75, 34 }, { 558, 628, 77, 34 },
+        { 636, 628, 73, 34 }, { 712, 628, 70, 34 }, { 783, 628, 65, 34 }, { 849, 628, 93, 34 }
+    };
+    jassert (keys.size() == (int) std::size (slots));
+    for (int i = 0; i < keys.size() && i < (int) std::size (slots); ++i)
+        keys[i]->setBounds (slots[i]);
+
+    waveFrame = { 37, 109, 575, 503 };
+    rate.setBounds (607, 109, 358, 503);
+    params.setBounds (rate.getBounds());
+    waveform.setTeddyLayout (! sequence.isVisible());
+    if (sequence.isVisible())
+    {
+        waveform.setBounds (37, 112, 928, 271);
+        sequence.setBounds (37, 391, 928, 217);
+    }
+    else waveform.setBounds (waveFrame);
 }
 
 bool XtoneEditor::isInterestedInFileDrag (const StringArray& files)

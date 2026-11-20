@@ -12,6 +12,9 @@ HeaderBar::HeaderBar (XtoneProcessor& p) : proc (p)
     addAndMakeVisible (presets);
     addAndMakeVisible (load);
     addAndMakeVisible (save);
+    presets.getProperties().set ("teddyField", true);
+    load.getProperties().set ("teddyPrinted", 1);
+    save.getProperties().set ("teddyPrinted", 1);
     presets.setTitle ("Factory Preset");
     load.setTitle ("Load preset from file");
     save.setTitle ("Save preset to file");
@@ -65,6 +68,13 @@ Rectangle<int> HeaderBar::presetDockBounds() const
 
 void HeaderBar::resized()
 {
+    if (hammer::skinFor (*this) == xtp::EditorSkin::cottonCandy)
+    {
+        presets.setBounds (75, 19, 128, 28);
+        load.setBounds (208, 19, 61, 28);
+        save.setBounds (272, 19, 61, 28);
+        return;
+    }
     auto dock = presetDockBounds().reduced (8, 6);
     dock.removeFromLeft (56);
     save.setBounds (dock.removeFromRight (73));
@@ -78,8 +88,9 @@ void HeaderBar::paint (Graphics& g)
 {
     const auto dock = presetDockBounds();
     const auto skin = hammer::skinFor (*this);
+    if (skin == xtp::EditorSkin::cottonCandy) return;
     hammer::artwork::drawPresetDock (g, dock, skin);
-    g.setColour (skin == xtp::EditorSkin::cottonCandy ? hammer::panelColours (skin).text : hammer::ink);
+    g.setColour (hammer::ink);
     g.setFont (hammer::font (11.0f, Font::bold));
     g.drawText ("PRESET", dock.withTrimmedLeft (14), Justification::centredLeft);
 }

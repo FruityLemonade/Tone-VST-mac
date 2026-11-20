@@ -182,7 +182,7 @@ Image sliderTrack (Rectangle<int> source, bool rightEnd)
 
 struct PhotoLayout
 {
-    Rectangle<int> waveform, ratePanel, rateTexture, dial, wordmark;
+    Rectangle<int> waveform, ratePanel, rateTexture, wordmark;
     Rectangle<int> presetDock, rateDisplay;
     int headerLeftEnd, headerRightStart;
     int footerStart, keysTop, keysBottom;
@@ -193,15 +193,14 @@ struct Photo
 {
     Photo (const void* bytes, int size, PhotoLayout layout)
         : image (ImageFileFormat::loadFrom (bytes, (size_t) size)), geometry (layout),
-          rateTexture (materialTile (image, geometry.rateTexture)),
-          dial (image.getClippedImage (geometry.dial))
+          rateTexture (materialTile (image, geometry.rateTexture))
     {
         jassert (image.getWidth() == 1478 && image.getHeight() == 1064);
     }
 
     const Image image;
     const PhotoLayout geometry;
-    const Image rateTexture, dial;
+    const Image rateTexture;
 };
 
 const Photo* photoFor (EditorSkin skin)
@@ -216,7 +215,7 @@ const Photo* photoFor (EditorSkin skin)
         {
             static const Photo makita (MakitaFaceplate_jpg, MakitaFaceplate_jpgSize,
                 { { 45, 116, 852, 793 }, { 907, 116, 540, 793 }, { 976, 334, 115, 17 },
-                  { 974, 369, 392, 398 }, { 148, 21, 227, 65 }, { 812, 32, 567, 57 }, { 928, 165, 485, 106 },
+                  { 148, 21, 227, 65 }, { 812, 32, 567, 57 }, { 928, 165, 485, 106 },
                   809, 1383, 909, 930, 985, {}, { 1399, 36, 42, 44 }, { 36, 993, 44, 44 }, { 1400, 993, 44, 44 } });
             return &makita;
         }
@@ -224,7 +223,7 @@ const Photo* photoFor (EditorSkin skin)
         {
             static const Photo festool (FestoolFaceplate_jpg, FestoolFaceplate_jpgSize,
                 { { 43, 128, 853, 796 }, { 905, 128, 540, 796 }, { 952, 805, 100, 19 },
-                  { 968, 381, 402, 408 }, { 121, 41, 252, 62 }, { 809, 40, 572, 65 }, { 929, 178, 485, 112 },
+                  { 121, 41, 252, 62 }, { 809, 40, 572, 65 }, { 929, 178, 485, 112 },
                   806, 1382, 924, 941, 990,
                   { 53, 54, 39, 40 }, { 1386, 54, 40, 40 }, { 28, 991, 38, 39 }, { 1412, 991, 40, 39 } });
             return &festool;
@@ -233,7 +232,7 @@ const Photo* photoFor (EditorSkin skin)
         {
             static const Photo hilti (HiltiFaceplate_jpg, HiltiFaceplate_jpgSize,
                 { { 43, 131, 851, 795 }, { 906, 131, 540, 795 }, { 954, 805, 100, 19 },
-                  { 968, 378, 399, 409 }, { 116, 42, 257, 58 }, { 818, 42, 563, 61 }, { 928, 177, 485, 106 },
+                  { 116, 42, 257, 58 }, { 818, 42, 563, 61 }, { 928, 177, 485, 106 },
                   815, 1382, 926, 941, 993, { 56, 48, 42, 43 }, { 1387, 48, 42, 43 }, {}, {} });
             return &hilti;
         }
@@ -241,237 +240,62 @@ const Photo* photoFor (EditorSkin skin)
     return nullptr;
 }
 
-struct KnobIndex
+struct ToolKnob
 {
-    // Measured in a 260 × 260 view of the dial photo.
-    Point<float> inner, outer;
-    float stroke;
-    Colour colour;
-};
+    ToolKnob (const void* bytes, int size)
+        : sprite (ImageFileFormat::loadFrom (bytes, (size_t) size)), rotorBounds (opaqueBounds (sprite)) {}
 
-constexpr float knobReferenceSize = 260.0f;
-constexpr float photoNoonRotation = -2.23f;
-constexpr int knobTextureSize = 400;
+    Image sprite;
+    Rectangle<float> rotorBounds;
 
-Image removeKnobIndex (const Image& source, const KnobIndex& index)
-{
-    const float scale = (float) knobTextureSize / knobReferenceSize;
-    Image square (Image::RGB, knobTextureSize, knobTextureSize, true);
+private:
+    static Rectangle<float> opaqueBounds (const Image& image)
     {
-        Graphics g (square);
-        g.drawImage (source, square.getBounds().toFloat());
-    }
+        const Image::BitmapData pixels (image, Image::BitmapData::readOnly);
+        int left = pixels.width, right = 0, top = pixels.height, bottom = 0;
+        for (int y = 0; y < pixels.height; ++y)
+            for (int x = 0; x < pixels.width; ++x)
+                if (pixels.getPixelColour (x, y).getAlpha() >= 200)
+                {
+                    left = jmin (left, x);
+                    right = jmax (right, x + 1);
+                    top = jmin (top, y);
+                    bottom = jmax (bottom, y + 1);
+                }
 
-    const auto start = index.inner * scale;
-    const auto end = index.outer * scale;
-    const auto direction = (end - start) / start.getDistanceFrom (end);
-    const auto across = Point<float> (-direction.y, direction.x);
-    const Line<float> axis (start, end);
-    const float solidRadius = (index.stroke * 0.5f + 1.5f) * scale;
-    const float feather = 2.0f * scale;
-    const float sampleOffset = solidRadius + feather + scale;
-
-    const auto search = Rectangle<float>::leftTopRightBottom (jmin (start.x, end.x), jmin (start.y, end.y),
-                                                               jmax (start.x, end.x), jmax (start.y, end.y))
-                            .expanded (sampleOffset).getSmallestIntegerContainer().getIntersection (square.getBounds());
-    auto clean = square.createCopy();
-    const Image::BitmapData original (square, Image::BitmapData::readOnly);
-    const Image::BitmapData result (clean, Image::BitmapData::readWrite);
-    const auto sample = [&] (Point<float> p)
-    {
-        return original.getPixelColour (jlimit (0, knobTextureSize - 1, roundToInt (p.x)),
-                                        jlimit (0, knobTextureSize - 1, roundToInt (p.y)));
-    };
-    for (int y = search.getY(); y < search.getBottom(); ++y)
-        for (int x = search.getX(); x < search.getRight(); ++x)
-        {
-            const Point<float> pixel ((float) x, (float) y);
-            const float distance = pixel.getDistanceFrom (axis.findNearestPointTo (pixel));
-            const float amount = jlimit (0.0f, 1.0f, (solidRadius + feather - distance) / feather);
-            if (amount == 0.0f) continue;
-
-            // Reconstruct the narrow index strip from the same flute on either side of it.
-            const auto relative = pixel - start;
-            const float offset = relative.x * across.x + relative.y * across.y;
-            const auto centre = pixel - across * offset;
-            const auto restored = sample (centre - across * sampleOffset)
-                                      .interpolatedWith (sample (centre + across * sampleOffset),
-                                                         jlimit (0.0f, 1.0f, 0.5f + offset / (2.0f * sampleOffset)));
-            result.setPixelColour (x, y, original.getPixelColour (x, y).interpolatedWith (restored, amount));
-        }
-    return clean;
-}
-
-Image makeKnobFace (const Image& source, const KnobIndex& index, float noonRotation, float outerRadius)
-{
-    auto face = removeKnobIndex (source, index);
-    if (noonRotation == 0.0f) return face;
-
-    const auto clean = face.createCopy();
-    Graphics g (face);
-    const auto bounds = face.getBounds().toFloat();
-    const auto centre = bounds.getCentre();
-    // Match the previous noon orientation of the inner face and leave the rim fixed.
-    Path innerFace;
-    innerFace.addEllipse (bounds.withSizeKeepingCentre (bounds.getWidth() * outerRadius, bounds.getHeight() * outerRadius));
-    g.reduceClipRegion (innerFace);
-    g.drawImageTransformed (clean, AffineTransform::rotation (noonRotation, centre.x, centre.y));
-    return face;
-}
-
-struct DialLighting
-{
-    float average = 0.0f;
-    float x = 0.0f, y = 0.0f, xx = 0.0f, xy = 0.0f;
-
-    void add (float brightness, Point<float> direction)
-    {
-        average += brightness;
-        x += brightness * direction.x;
-        y += brightness * direction.y;
-        xx += brightness * (direction.x * direction.x - direction.y * direction.y);
-        xy += brightness * (2.0f * direction.x * direction.y);
-    }
-
-    float directional (Point<float> direction) const
-    {
-        return x * direction.x + y * direction.y
-             + xx * (direction.x * direction.x - direction.y * direction.y)
-             + xy * (2.0f * direction.x * direction.y);
+        // Ignore the transparent padding when centring the physical rotor.
+        const auto bounds = Rectangle<int>::leftTopRightBottom (left, top, right, bottom);
+        return (bounds.isEmpty() ? image.getBounds() : bounds).toFloat();
     }
 };
 
-float knobLuminance (Colour colour)
+const ToolKnob& knobFor (EditorSkin skin)
 {
-    return 0.2126f * colour.getFloatRed() + 0.7152f * colour.getFloatGreen() + 0.0722f * colour.getFloatBlue();
-}
-
-void separateRingLighting (const Image& face, Image& ring, Image& lighting, float innerRadius, float outerRadius)
-{
-    constexpr int samples = 96;
-    constexpr int radius = knobTextureSize / 2;
-    const Point<float> centre ((float) radius, (float) radius);
-    const int first = (int) std::floor ((float) radius * innerRadius) - 1;
-    const int last = (int) std::ceil ((float) radius * outerRadius) + 1;
-    std::array<DialLighting, radius> radialLighting {};
-    const Image::BitmapData original (face, Image::BitmapData::readOnly);
-
-    // Keep the broad directional shading fixed. The remaining detail includes the flutes.
-    for (int r = first; r <= last; ++r)
-    {
-        auto& field = radialLighting[(size_t) r];
-        for (int sample = 0; sample < samples; ++sample)
-        {
-            const auto angle = MathConstants<float>::twoPi * (float) sample / (float) samples;
-            const Point<float> direction (std::cos (angle), std::sin (angle));
-            const auto pixel = (centre + direction * (float) r).roundToInt();
-            field.add (knobLuminance (original.getPixelColour (pixel.x, pixel.y)), direction);
-        }
-        field.average /= (float) samples;
-    }
-
-    const Image::BitmapData detail (ring, Image::BitmapData::readWrite);
-    const Image::BitmapData overlay (lighting, Image::BitmapData::writeOnly);
-    for (int y = radius - last; y < radius + last; ++y)
-        for (int x = radius - last; x < radius + last; ++x)
-        {
-            const auto offset = Point<float> ((float) x + 0.5f, (float) y + 0.5f) - centre;
-            const float distance = offset.getDistanceFromOrigin();
-            if (distance < (float) first || distance >= (float) last) continue;
-
-            const auto direction = offset / distance;
-            const int r = (int) distance;
-            const float fraction = distance - (float) r;
-            const auto& a = radialLighting[(size_t) r];
-            const auto& b = radialLighting[(size_t) r + 1];
-            const float average = jmap (fraction, a.average, b.average);
-            const float delta = jmap (fraction, a.directional (direction), b.directional (direction))
-                              * (2.0f / (float) samples);
-            const bool lightening = delta > 0.0f;
-            const float range = lightening ? 1.0f - average : average;
-            const float alpha = jlimit (0.0f, 0.55f, std::abs (delta) / jmax (0.02f, range));
-            const float light = lightening ? alpha : 0.0f;
-            const auto colour = original.getPixelColour (x, y);
-            const float unlitLuma = (knobLuminance (colour) - light) / (1.0f - alpha);
-            const float relief = jlimit (-0.07f, 0.07f, (unlitLuma - average) * 0.32f);
-            const auto undoLighting = [&] (float channel)
-            {
-                return jlimit (0.0f, 1.0f, (channel - light) / (1.0f - alpha) + relief);
-            };
-            detail.setPixelColour (x, y, Colour::fromFloatRGBA (undoLighting (colour.getFloatRed()),
-                                                               undoLighting (colour.getFloatGreen()),
-                                                               undoLighting (colour.getFloatBlue()), 1.0f));
-            overlay.setPixelColour (x, y, (lightening ? Colours::white : Colours::black).withAlpha (alpha));
-        }
-}
-
-void drawHubRecesses (Graphics& g, Point<float> centre, float hubRadius, float rotation)
-{
-    // Unequal tool recesses make the rotating cap legible at small sizes.
-    const auto turn = AffineTransform::rotation (rotation + 0.29f, centre.x, centre.y);
-    for (const auto& [offset, length] : std::array { Point<float> (-0.69f, 0.66f), Point<float> (0.69f, 0.44f) })
-    {
-        Path slot;
-        slot.addRoundedRectangle (Rectangle<float> (hubRadius * length, hubRadius * 0.21f)
-                                      .withCentre (centre.translated (0.0f, hubRadius * offset)),
-                                  hubRadius * 0.075f);
-        slot.applyTransform (turn);
-        const auto bounds = slot.getBounds();
-        g.setColour (Colours::black.withAlpha (0.70f));
-        g.fillPath (slot);
-        // The bevel catches the same overhead light at every dial angle.
-        g.setGradientFill (ColourGradient (Colours::black.withAlpha (0.86f), bounds.getTopLeft(),
-                                           Colours::white.withAlpha (0.34f), bounds.getBottomLeft(), false));
-        g.strokePath (slot, PathStrokeType (jmax (0.6f, hubRadius * 0.038f),
-                                           PathStrokeType::curved, PathStrokeType::rounded));
-    }
-}
-
-struct KnobArtwork
-{
-    KnobArtwork (const Image& source, KnobIndex index, float noonRotation, float inner, float outer)
-        : face (makeKnobFace (source, index, noonRotation, outer)), ring (face.createCopy()),
-          lighting (Image::ARGB, knobTextureSize, knobTextureSize, true),
-          mark (index), innerRadius (inner), outerRadius (outer)
-    {
-        separateRingLighting (face, ring, lighting, innerRadius, outerRadius);
-    }
-
-    Image face, ring, lighting;
-    const KnobIndex mark;
-    const float innerRadius, outerRadius;
-};
-
-const KnobArtwork& knobFor (EditorSkin skin)
-{
+    using namespace XtoneFaceplateData;
     switch (skin)
     {
         case EditorSkin::makita:
         {
-            static const KnobArtwork makita (photoFor (EditorSkin::makita)->dial,
-                { { 190.0f, 176.2f }, { 214.9f, 197.9f }, 6.5f, Colour (0xffeeefeb) }, photoNoonRotation, 0.55f, 0.876f);
-            return makita;
+            static const ToolKnob knob (MakitaKnob_png, MakitaKnob_pngSize);
+            return knob;
         }
         case EditorSkin::festool:
         {
-            static const KnobArtwork festool (photoFor (EditorSkin::festool)->dial,
-                { { 185.7f, 168.3f }, { 219.4f, 194.3f }, 7.0f, Colour (0xffb9ef00) }, photoNoonRotation, 0.455f, 0.876f);
-            return festool;
+            static const ToolKnob knob (FestoolKnob_png, FestoolKnob_pngSize);
+            return knob;
         }
         case EditorSkin::hilti:
         {
-            static const KnobArtwork hilti (photoFor (EditorSkin::hilti)->dial,
-                { { 186.8f, 172.3f }, { 221.3f, 198.2f }, 8.5f, Colour (0xfff4f4f2) }, photoNoonRotation, 0.455f, 0.876f);
-            return hilti;
+            static const ToolKnob knob (HiltiKnob_png, HiltiKnob_pngSize);
+            return knob;
         }
         case EditorSkin::cottonCandy:
         case EditorSkin::hammerDrill:
             break;
     }
 
-    static const KnobArtwork hammer (mockup().getClippedImage ({ 1037, 419, 325, 337 }),
-        { { 130.9f, 62.6f }, { 130.5f, 16.0f }, 8.0f, Colour (0xfff7f6f1) }, 0.0f, 0.46f, 0.91f);
-    return hammer;
+    static const ToolKnob knob (DeWaltKnob_png, DeWaltKnob_pngSize);
+    return knob;
 }
 
 int photoHeaderWidth (const PhotoLayout& source, int top, int dockX)
@@ -545,7 +369,6 @@ void drawPhotoFrame (Graphics& g, const Photo& photo, Rectangle<int> bounds, Rec
 
 Rectangle<int> wordmarkBounds (int top, int dockX, EditorSkin skin)
 {
-    if (skin == EditorSkin::cottonCandy) return cottonCandy::wordmarkBounds (top, dockX);
     if (const auto* photo = photoFor (skin))
     {
         const auto& src = photo->geometry;
@@ -565,12 +388,6 @@ void drawFrame (Graphics& g, Rectangle<int> bounds, Rectangle<int> wave, Rectang
 {
     g.fillAll (Colour (0xff141413));
     if (wave.isEmpty() || rate.isEmpty() || dock.isEmpty()) return;
-
-    if (skin == EditorSkin::cottonCandy)
-    {
-        cottonCandy::drawFrame (g, bounds, wave.getY(), dock.getX(), keyArea (bounds, wave.getBottom()));
-        return;
-    }
 
     if (const auto* photo = photoFor (skin))
     {
@@ -622,7 +439,7 @@ void drawWaveformPanel (Graphics& g, Rectangle<int> target, EditorSkin skin)
 {
     if (skin == EditorSkin::cottonCandy)
     {
-        cottonCandy::drawPearl (g, target.toFloat(), Colour (0xfffffcff), Colour (0xffffe9f3), 16.0f);
+        cottonCandy::drawQuiltedPanel (g, target.toFloat());
         return;
     }
     if (const auto* photo = photoFor (skin))
@@ -638,7 +455,7 @@ void drawRatePanel (Graphics& g, Rectangle<int> target, EditorSkin skin)
 {
     if (skin == EditorSkin::cottonCandy)
     {
-        cottonCandy::drawPearl (g, target.toFloat(), Colour (0xfffffbfd), Colour (0xffffe0ef), 16.0f);
+        cottonCandy::drawQuiltedPanel (g, target.toFloat());
         return;
     }
     if (const auto* photo = photoFor (skin))
@@ -654,7 +471,7 @@ void drawPresetDock (Graphics& g, Rectangle<int> target, EditorSkin skin)
 {
     if (skin == EditorSkin::cottonCandy)
     {
-        cottonCandy::drawPearl (g, target.toFloat(), Colour (0xfffff7fb), Colour (0xffffd9ea), 13.0f);
+        cottonCandy::drawPearl (g, target.toFloat(), Colours::white, Colour (0xfff095c2), 14.0f);
         return;
     }
     static const auto brushedMetal = materialTile ({ 981, 89, 69, 7 });
@@ -782,7 +599,7 @@ void drawKeyWell (Graphics& g, Rectangle<int> target, EditorSkin skin)
 {
     if (skin == EditorSkin::cottonCandy)
     {
-        cottonCandy::drawPearl (g, target.toFloat().expanded (7.0f, 5.0f), Colour (0xffffc8e2), Colour (0xffe58cb6), 12.0f);
+        cottonCandy::drawPearl (g, target.toFloat().expanded (8.0f, 6.0f), Colours::white, Colour (0xfff095c2), 13.0f);
         return;
     }
     g.setTiledImageFill (blackPlastic(), target.getX(), target.getY(), 1.0f);
@@ -793,45 +610,18 @@ void drawKnob (Graphics& g, Rectangle<float> dial, float angle, EditorSkin skin)
 {
     const auto& knob = knobFor (skin);
     const auto centre = dial.getCentre();
-    const auto rotation = angle - MathConstants<float>::twoPi;
-    {
-        const Graphics::ScopedSaveState saved (g);
-        Path rim;
-        rim.addEllipse (dial);
-        g.reduceClipRegion (rim);
-        g.setOpacity (1.0f);
-        g.drawImage (knob.face, dial);
+    const auto rotor = dial.reduced (dial.getWidth() * 0.025f);
+    g.setColour (Colours::black.withAlpha (0.50f));
+    g.fillEllipse (dial.translated (0.0f, dial.getHeight() * 0.014f));
+    g.setGradientFill (ColourGradient (Colour (0xff414447), dial.getTopLeft(),
+                                       Colour (0xff0a0b0b), dial.getBottomLeft(), false));
+    g.fillEllipse (dial);
 
-        Path flutedRing;
-        flutedRing.setUsingNonZeroWinding (false);
-        flutedRing.addEllipse (dial.withSizeKeepingCentre (dial.getWidth() * knob.outerRadius,
-                                                          dial.getHeight() * knob.outerRadius));
-        flutedRing.addEllipse (dial.withSizeKeepingCentre (dial.getWidth() * knob.innerRadius,
-                                                          dial.getHeight() * knob.innerRadius));
-        g.reduceClipRegion (flutedRing);
-
-        const auto transform = AffineTransform::scale (dial.getWidth() / (float) knobTextureSize,
-                                                      dial.getHeight() / (float) knobTextureSize)
-                                   .translated (dial.getX(), dial.getY())
-                                   .rotated (rotation, centre.x, centre.y);
-        g.drawImageTransformed (knob.ring, transform);
-        g.drawImage (knob.lighting, dial);
-    }
-
-    drawHubRecesses (g, centre, dial.getWidth() * 0.5f * knob.innerRadius, rotation);
-
-    const auto scale = dial.getWidth() / knobReferenceSize;
-    const Point<float> referenceCentre (knobReferenceSize * 0.5f, knobReferenceSize * 0.5f);
-    const auto at = [&] (Point<float> reference)
-    {
-        return centre.getPointOnCircumference (reference.getDistanceFrom (referenceCentre) * scale, angle);
-    };
-
-    Path indicator;
-    indicator.startNewSubPath (at (knob.mark.inner));
-    indicator.lineTo (at (knob.mark.outer));
-    g.setColour (knob.mark.colour);
-    g.strokePath (indicator, PathStrokeType (jmax (1.6f, knob.mark.stroke * scale),
-                                             PathStrokeType::curved, PathStrokeType::rounded));
+    // The illustrated marker is at twelve o'clock. Turn the whole cap over the fixed collar.
+    const auto transform = RectanglePlacement (RectanglePlacement::centred)
+                               .getTransformToFit (knob.rotorBounds, rotor)
+                               .rotated (angle, centre.x, centre.y);
+    g.setOpacity (1.0f);
+    g.drawImageTransformed (knob.sprite, transform);
 }
 } // namespace hammer::artwork

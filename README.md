@@ -36,7 +36,7 @@ Hover over a control, waveform handle, or step cell for a short explanation.
 
 ## Skins
 
-Click the **XTONE** wordmark and choose a skin. **Cotton Candy** pairs pink fur with pearl-white controls, baby-blue accents, and rhinestone hearts. The skin belongs to the plugin instance and is saved with the DAW project. Factory and file presets keep the current skin.
+Click the **XTONE** wordmark and choose a skin. **Cotton Candy** uses the Teddy Belly artwork with live controls and a jeweled heart whose tip points to the rate setting. Hammer Drill, Makitone, Festone, and Hiltone use illustrated rotary switches redrawn from the hardware references. The skin belongs to the plugin instance and is saved with the DAW project. Factory and file presets keep the current skin.
 
 | Hammer Drill | Makitone |
 | --- | --- |

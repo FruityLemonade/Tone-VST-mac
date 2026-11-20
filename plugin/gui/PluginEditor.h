@@ -27,9 +27,11 @@ private:
     void timerCallback() override;
     void updateSkin();
     void selectGroup (int);
+    void layoutTeddyBelly();
 
     XtoneProcessor& proc;
     hammer::LookAndFeel theme;
+    juce::Component canvas;
     HeaderBar header;
     WaveformView waveform;
     RatePanel rate;

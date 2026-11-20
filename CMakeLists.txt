@@ -51,8 +51,14 @@ if (XTONE_BUILD_PLUGIN)
             plugin/assets/MakitaFaceplate.jpg
             plugin/assets/FestoolFaceplate.jpg
             plugin/assets/HiltiFaceplate.jpg
-            plugin/assets/CottonCandyFur.jpg
-            plugin/assets/CottonCandyHeart.png)
+            plugin/assets/DeWaltKnob.png
+            plugin/assets/FestoolKnob.png
+            plugin/assets/HiltiKnob.png
+            plugin/assets/MakitaKnob.png
+            plugin/assets/TeddyBellyPlush.jpg
+            plugin/assets/TeddyBellyQuilt.jpg
+            plugin/assets/TeddyBellyFaceplate.png
+            plugin/assets/TeddyBellyHeart.png)
     set_property(SOURCE plugin/gui/FaceplateArtwork.cpp plugin/gui/CottonCandyArtwork.cpp APPEND PROPERTY
         INCLUDE_DIRECTORIES "$<TARGET_PROPERTY:XtoneFaceplate,INTERFACE_INCLUDE_DIRECTORIES>")
     target_sources(Xtone PRIVATE

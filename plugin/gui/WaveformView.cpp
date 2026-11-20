@@ -87,6 +87,19 @@ WaveformView::~WaveformView()
     scrollbar.removeListener (this);
 }
 
+void WaveformView::setTeddyLayout (bool next)
+{
+    if (teddyLayout == next) return;
+    teddyLayout = next;
+    sensitivityLabel.setVisible (! teddyLayout);
+    for (auto* button : { &loadSample, &normalize, &transientButton, &sliceButton, &resetZoomButton,
+                          &zoomInButton, &zoomOutButton })
+        button->getProperties().set ("teddyPrinted", teddyLayout ? 1 : 0);
+    lookAndFeelChanged();
+    resized();
+    repaint();
+}
+
 bool WaveformView::usesTwoToolbarRows() const { return getWidth() < 535; }
 
 Rectangle<int> WaveformView::plotArea() const
@@ -94,10 +107,29 @@ Rectangle<int> WaveformView::plotArea() const
     return getLocalBounds().reduced (13, 12).withTrimmedTop (41).withTrimmedBottom (usesTwoToolbarRows() ? 84 : 51);
 }
 
-Rectangle<int> WaveformView::waveArea() const { return plotArea().withTrimmedBottom (33); }
+Rectangle<int> WaveformView::waveArea() const
+{
+    if (teddyLayout) return { 29, 63, 522, 349 };
+    return plotArea().withTrimmedBottom (33);
+}
 
 void WaveformView::resized()
 {
+    if (teddyLayout)
+    {
+        sampleName.setBounds (33, 24, 298, 28);
+        loadSample.setBounds (340, 23, 108, 30);
+        normalize.setBounds (452, 23, 97, 30);
+        scrollbar.setBounds (30, 429, 520, 10);
+        transientButton.setBounds (30, 445, 90, 27);
+        sensitivity.setBounds (191, 445, 166, 27);
+        sliceButton.setBounds (365, 445, 70, 27);
+        resetZoomButton.setBounds (442, 445, 45, 27);
+        zoomOutButton.setBounds (492, 445, 30, 27);
+        zoomInButton.setBounds (524, 445, 28, 27);
+        status.setBounds (31, 473, 519, 13);
+        return;
+    }
     auto content = getLocalBounds().reduced (13, 12);
     auto sample = content.removeFromTop (32);
     normalize.setBounds (sample.removeFromRight (104));
@@ -335,7 +367,7 @@ void WaveformView::paintSignal (Graphics& g, Rectangle<int> w) const
 void WaveformView::paintTimeline (Graphics& g, Rectangle<int> w) const
 {
     const auto& audio = *asset->audio;
-    const int segments = jlimit (2, 5, w.getWidth() / 105);
+    const int segments = teddyLayout ? 5 : jlimit (2, 5, w.getWidth() / 105);
     const double lengthSeconds = visibleLength / audio.sampleRate;
     g.setColour (hammer::panelColours (*this).muted);
     g.setFont (hammer::mono (11.0f));
@@ -354,8 +386,9 @@ void WaveformView::paintTimeline (Graphics& g, Rectangle<int> w) const
 void WaveformView::lookAndFeelChanged()
 {
     const auto& colours = hammer::panelColours (*this);
-    sampleName.setColour (Label::backgroundColourId, colours.recess);
-    sampleName.setColour (Label::outlineColourId, colours.edge);
+    sampleName.setColour (Label::backgroundColourId, teddyLayout ? Colours::transparentBlack : colours.recess);
+    sampleName.setColour (Label::outlineColourId, teddyLayout ? Colours::transparentBlack : colours.edge);
+    sampleName.setFont (hammer::font (teddyLayout ? 14.0f : 16.0f, Font::bold));
     status.setColour (Label::textColourId, colours.muted);
 }
 
@@ -365,9 +398,10 @@ void WaveformView::paint (Graphics& g)
     const auto accent = hammer::accentColour (skin);
     const auto& colours = hammer::panelColours (skin);
     const bool cotton = skin == xtp::EditorSkin::cottonCandy;
-    const auto plotSurface = cotton ? Colour (0xfffffcff) : Colour (0xff101210);
+    const auto plotSurface = teddyLayout ? Colour (0xfffcf5fa)
+                           : cotton ? Colour (0xfffffcff) : Colour (0xff101210);
     const auto handleSurface = cotton ? plotSurface : hammer::ink;
-    hammer::artwork::drawWaveformPanel (g, getLocalBounds(), skin);
+    if (! teddyLayout) hammer::artwork::drawWaveformPanel (g, getLocalBounds(), skin);
     const auto w = waveArea();
     g.setColour (plotSurface);
     g.fillRoundedRectangle (w.toFloat(), 5.0f);

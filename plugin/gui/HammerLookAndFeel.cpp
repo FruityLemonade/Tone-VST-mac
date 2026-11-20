@@ -203,6 +203,23 @@ void LookAndFeel::drawButtonBackground (Graphics& g, Button& button, const Colou
         return;
     }
 
+    if (cotton && cottonCandy::usesPrintedCap (button))
+    {
+        const auto face = button.getLocalBounds().toFloat().reduced (1.0f);
+        if (! button.isEnabled() || down || over)
+        {
+            g.setColour (down ? cottonCandy::berry.withAlpha (0.18f)
+                             : Colours::white.withAlpha (button.isEnabled() ? 0.23f : 0.34f));
+            g.fillRoundedRectangle (face, 9.0f);
+        }
+        if (button.hasKeyboardFocus (true))
+        {
+            g.setColour (accent);
+            g.drawRoundedRectangle (face, 9.0f, 1.0f);
+        }
+        return;
+    }
+
     const auto well = button.getLocalBounds().reduced (0, 1);
     const auto cap = well.withTrimmedBottom (1).translated (0, down ? 1 : 0);
     const bool selected = button.getToggleState();
@@ -234,6 +251,7 @@ void LookAndFeel::drawButtonBackground (Graphics& g, Button& button, const Colou
 void LookAndFeel::drawButtonText (Graphics& g, TextButton& button, bool over, bool down)
 {
     if (button.getProperties().contains ("wordmark")) return;
+    if (skin == xtp::EditorSkin::cottonCandy && cottonCandy::usesPrintedCap (button)) return;
     const Graphics::ScopedSaveState saved (g);
     if (down) g.addTransform (AffineTransform::translation (0.0f, 1.0f));
     LookAndFeel_V4::drawButtonText (g, button, over, down);
@@ -242,6 +260,15 @@ void LookAndFeel::drawButtonText (Graphics& g, TextButton& button, bool over, bo
 void LookAndFeel::drawComboBox (Graphics& g, int w, int h, bool down, int, int, int, int, ComboBox& box)
 {
     const auto r = Rectangle<float> (0.0f, 0.0f, (float) w, (float) h).reduced (0.5f);
+    if (skin == xtp::EditorSkin::cottonCandy && box.getProperties().contains ("teddyField"))
+    {
+        if (down || box.hasKeyboardFocus (true))
+        {
+            g.setColour (accent);
+            g.drawRoundedRectangle (r.reduced (1.0f), 8.0f, 1.0f);
+        }
+        return;
+    }
     const auto radius = skin == xtp::EditorSkin::cottonCandy ? 7.0f : 4.0f;
     {
         const Graphics::ScopedSaveState saved (g);
@@ -313,15 +340,16 @@ void LookAndFeel::drawRotarySlider (Graphics& g, int x, int y, int w, int h, flo
                                     Slider& slider)
 {
     const bool chuck = slider.getProperties().contains ("chuck");
+    const bool teddyRate = chuck && skin == xtp::EditorSkin::cottonCandy;
     const auto b = Rectangle<float> ((float) x, (float) y, (float) w, (float) h);
-    const auto centre = b.getCentre();
-    const float radius = jmin (b.getWidth(), b.getHeight()) * (chuck ? 0.435f : 0.40f);
+    const auto centre = b.getCentre().translated (0.0f, teddyRate ? 8.0f : 0.0f);
+    const float radius = jmin (b.getWidth(), b.getHeight()) * (teddyRate ? 0.455f : chuck ? 0.435f : 0.40f);
     const auto point = [centre] (float distance, float angle) { return centre.getPointOnCircumference (distance, angle); };
     const float angle = jmap (pos, start, end);
     const auto rim = Rectangle<float> (2.0f * radius, 2.0f * radius).withCentre (centre);
     if (skin == xtp::EditorSkin::cottonCandy)
     {
-        cottonCandy::drawKnob (g, rim, angle, start, end, slider.hasKeyboardFocus (true));
+        cottonCandy::drawKnob (g, rim, angle, start, end, slider.hasKeyboardFocus (true), chuck);
         return;
     }
     const int ticks = chuck ? 11 : 7;
