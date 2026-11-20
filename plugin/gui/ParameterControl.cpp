@@ -4,8 +4,8 @@
 
 using namespace juce;
 
-ParameterControl::ParameterControl (RangedAudioParameter& parameter, State& state, String caption, bool stack)
-    : stacked (stack)
+ParameterControl::ParameterControl (RangedAudioParameter& parameter, State& state, String caption, bool stack, Style form)
+    : style (form), stacked (stack || style == Style::knob)
 {
     const auto name = parameter.getName (128);
     if (caption.isEmpty()) caption = name;
@@ -26,6 +26,7 @@ ParameterControl::ParameterControl (RangedAudioParameter& parameter, State& stat
     label.setMinimumHorizontalScale (0.78f);
     label.setBorderSize (BorderSize<int> (0));
     label.setTooltip (name);
+    if (style == Style::knob) label.setJustificationType (Justification::centred);
     addAndMakeVisible (label);
 
     if (auto* p = dynamic_cast<AudioParameterChoice*> (&parameter))
@@ -39,7 +40,8 @@ ParameterControl::ParameterControl (RangedAudioParameter& parameter, State& stat
         return;
     }
 
-    value = std::make_unique<Slider> (Slider::LinearBar, Slider::TextBoxLeft);
+    value = std::make_unique<Slider> (style == Style::knob ? Slider::RotaryHorizontalVerticalDrag : Slider::LinearBar,
+                                      style == Style::knob ? Slider::TextBoxBelow : Slider::TextBoxLeft);
     value->setName (name);
     value->setTooltip (name + ". Drag to adjust or click the value to enter it.");
     value->setScrollWheelEnabled (false);
@@ -61,6 +63,10 @@ void ParameterControl::resized()
     else
         label.setBounds (r.removeFromLeft (r.getWidth() * 47 / 100).withTrimmedRight (6));
 
-    if (value != nullptr) value->setBounds (r);
+    if (value != nullptr)
+    {
+        if (style == Style::knob) value->setTextBoxStyle (Slider::TextBoxBelow, false, jmin (92, r.getWidth()), 18);
+        value->setBounds (r);
+    }
     if (choice != nullptr) choice->setBounds (r);
 }

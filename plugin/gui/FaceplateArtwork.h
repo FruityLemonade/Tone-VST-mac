@@ -17,5 +17,5 @@ void drawSlider (juce::Graphics&, juce::Rectangle<int> track, juce::Rectangle<fl
                  xtp::EditorSkin);
 juce::Rectangle<int> keyArea (juce::Rectangle<int> bounds, int bodyBottom);
 void drawKeyWell (juce::Graphics&, juce::Rectangle<int>);
-void drawChuck (juce::Graphics&, juce::Rectangle<float>, float angle, xtp::EditorSkin);
+void drawKnob (juce::Graphics&, juce::Rectangle<float>, float angle, xtp::EditorSkin);
 } // namespace hammer::artwork

@@ -41,7 +41,7 @@ The editor already exposes **A/B**, **Ramp**, **LFO 1**, **LFO 2**, and **Sequen
 
 ## Quick start
 
-- Click the **XTONE** wordmark to see the plugin version and choose **Hammer Drill**, **Makita**, **Festool**, or **Hilti**. XTONE saves the skin with each plugin instance in your DAW project. Preset changes keep the current skin.
+- Click the **XTONE** wordmark to see the plugin version and choose **Hammer Drill**, **Makitone**, **Festone**, or **Hiltone**. XTONE saves the skin with each plugin instance in your DAW project. Preset changes keep the current skin.
 - In the **Rate** tab, choose **BPM** for **Plugin BPM** with a note **Division**, **Hz** for a direct frequency, or **Host ×** for the project tempo multiplied by the **Host Multiplier**. Turn the main dial to set the rate, or type a BPM or Hz value below it.
 - Play the **Root Note** to hear the selected rate. The default is MIDI note 60, shown as C4 in scientific pitch notation and C5 in FL Studio. In **Relative** key tracking, going up an octave doubles the rate. With **Key Tracking** set to **Absolute**, MIDI note 69 (A4) plays at 440 Hz by default, independent of the rate source.
 - Click **Load Sample…** or drag an audio file onto the editor. Dragging from the FL Studio browser is supported. Files up to 32 MB are embedded in the project. Larger files are stored by path.

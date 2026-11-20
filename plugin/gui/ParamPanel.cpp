@@ -18,21 +18,36 @@ public:
     {
         for (auto* p : g.getParameters (true))
             if (auto* rp = dynamic_cast<RangedAudioParameter*> (p))
-                addAndMakeVisible (controls.add (new ParameterControl (*rp, state)));
+            {
+                using Style = ParameterControl::Style;
+                const auto id = rp->getParameterID();
+                const bool knob = id == "transpose" || id == "fine" || id == "s_pitch" || id == "penv_amt"
+                               || id == "ab_pitch" || id == "drive" || id == "out_gain";
+                addAndMakeVisible (controls.add (new ParameterControl (*rp, state, {}, false, knob ? Style::knob : Style::bar)));
+            }
     }
 
     void layoutFor (int width)
     {
-        constexpr int ch = 35;
         const int cols = jmax (1, width / 258);
-        const int rows = (controls.size() + cols - 1) / cols;
-        setSize (width, jmax (ch, rows * ch));
-        for (int i = 0; i < controls.size(); ++i)
+        int y = 0;
+        for (int first = 0; first < controls.size(); first += cols)
         {
-            const int col = i % cols;
-            const int x = col * width / cols;
-            controls[i]->setBounds (x, (i / cols) * ch, (col + 1) * width / cols - x, ch);
+            int height = 35;
+            const int count = jmin (cols, controls.size() - first);
+            for (int col = 0; col < count; ++col)
+                height = jmax (height, controls[first + col]->preferredHeight());
+
+            for (int col = 0; col < count; ++col)
+            {
+                const int x = col * width / cols;
+                auto* control = controls[first + col];
+                const int controlHeight = control->preferredHeight();
+                control->setBounds (x, y + (height - controlHeight) / 2, (col + 1) * width / cols - x, controlHeight);
+            }
+            y += height;
         }
+        setSize (width, y);
     }
 
 private:

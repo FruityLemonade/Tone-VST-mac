@@ -4,6 +4,7 @@
 #include "XtoneFaceplateData.h"
 
 #include <array>
+#include <cmath>
 
 using namespace juce;
 
@@ -87,16 +88,11 @@ std::array<int, 4> sliceAxis (int start, int end, int before, int after)
     return { start, start + before, end - after, end };
 }
 
-void sliced (Graphics& g, const Image& image, Rectangle<int> source, Rectangle<int> target, BorderSize<int> crop,
-             BorderSize<int> edge, const Image* interior = nullptr)
+using SliceAxis = std::array<int, 4>;
+
+void drawSlices (Graphics& g, const Image& image, const SliceAxis& sx, const SliceAxis& sy,
+                 const SliceAxis& dx, const SliceAxis& dy, const Image* interior = nullptr)
 {
-    if (target.isEmpty()) return;
-
-    const auto sx = sliceAxis (source.getX(), source.getRight(), crop.getLeft(), crop.getRight());
-    const auto sy = sliceAxis (source.getY(), source.getBottom(), crop.getTop(), crop.getBottom());
-    const auto dx = sliceAxis (target.getX(), target.getRight(), edge.getLeft(), edge.getRight());
-    const auto dy = sliceAxis (target.getY(), target.getBottom(), edge.getTop(), edge.getBottom());
-
     for (size_t row = 0; row < 3; ++row)
         for (size_t col = 0; col < 3; ++col)
         {
@@ -111,6 +107,43 @@ void sliced (Graphics& g, const Image& image, Rectangle<int> source, Rectangle<i
                 blit (g, image, Rectangle<int>::leftTopRightBottom (sx[col], sy[row], sx[col + 1], sy[row + 1]), dest);
             }
         }
+}
+
+void sliced (Graphics& g, const Image& image, Rectangle<int> source, Rectangle<int> target, BorderSize<int> crop,
+             BorderSize<int> edge, const Image* interior = nullptr)
+{
+    if (target.isEmpty()) return;
+    drawSlices (g, image,
+                sliceAxis (source.getX(), source.getRight(), crop.getLeft(), crop.getRight()),
+                sliceAxis (source.getY(), source.getBottom(), crop.getTop(), crop.getBottom()),
+                sliceAxis (target.getX(), target.getRight(), edge.getLeft(), edge.getRight()),
+                sliceAxis (target.getY(), target.getBottom(), edge.getTop(), edge.getBottom()), interior);
+}
+
+void blitWithScrew (Graphics& g, const Image& image, Rectangle<int> source, Rectangle<int> target,
+                    Rectangle<int> screw)
+{
+    if (screw.isEmpty())
+    {
+        blit (g, image, source, target);
+        return;
+    }
+    if (target.isEmpty()) return;
+    jassert (source.contains (screw));
+
+    const float xScale = (float) target.getWidth() / (float) source.getWidth();
+    const float yScale = (float) target.getHeight() / (float) source.getHeight();
+    const auto screwSize = roundToInt (jmin ((float) screw.getWidth() * xScale, (float) screw.getHeight() * yScale));
+    const int screwX = target.getX() + roundToInt ((screw.toFloat().getCentreX() - (float) source.getX()) * xScale
+                                                - (float) screwSize * 0.5f);
+    const int screwY = target.getY() + roundToInt ((screw.toFloat().getCentreY() - (float) source.getY()) * yScale
+                                                - (float) screwSize * 0.5f);
+
+    // Stretch the housing around the fastener, and always draw the fastener into a square.
+    drawSlices (g, image, { source.getX(), screw.getX(), screw.getRight(), source.getRight() },
+                          { source.getY(), screw.getY(), screw.getBottom(), source.getBottom() },
+                          { target.getX(), screwX, screwX + screwSize, target.getRight() },
+                          { target.getY(), screwY, screwY + screwSize, target.getBottom() });
 }
 
 void panel (Graphics& g, Rectangle<int> source, Rectangle<int> target, BorderSize<int> crop,
@@ -152,6 +185,7 @@ struct PhotoLayout
     Rectangle<int> presetDock, rateDisplay;
     int headerLeftEnd, headerRightStart;
     int footerStart, keysTop, keysBottom;
+    Rectangle<int> upperLeftScrew, upperRightScrew, lowerLeftScrew, lowerRightScrew;
 };
 
 struct Photo
@@ -181,7 +215,7 @@ const Photo* photoFor (EditorSkin skin)
             static const Photo makita (MakitaFaceplate_jpg, MakitaFaceplate_jpgSize,
                 { { 45, 116, 852, 793 }, { 907, 116, 540, 793 }, { 976, 334, 115, 17 },
                   { 974, 369, 392, 398 }, { 148, 21, 227, 65 }, { 812, 32, 567, 57 }, { 928, 165, 485, 106 },
-                  809, 1383, 909, 930, 985 });
+                  809, 1383, 909, 930, 985, {}, { 1399, 36, 42, 44 }, { 36, 993, 44, 44 }, { 1400, 993, 44, 44 } });
             return &makita;
         }
         case EditorSkin::festool:
@@ -189,7 +223,8 @@ const Photo* photoFor (EditorSkin skin)
             static const Photo festool (FestoolFaceplate_jpg, FestoolFaceplate_jpgSize,
                 { { 43, 128, 853, 796 }, { 905, 128, 540, 796 }, { 952, 805, 100, 19 },
                   { 968, 381, 402, 408 }, { 121, 41, 252, 62 }, { 809, 40, 572, 65 }, { 929, 178, 485, 112 },
-                  806, 1382, 924, 941, 993 });
+                  806, 1382, 924, 941, 990,
+                  { 53, 54, 39, 40 }, { 1386, 54, 40, 40 }, { 28, 991, 38, 39 }, { 1412, 991, 40, 39 } });
             return &festool;
         }
         case EditorSkin::hilti:
@@ -197,11 +232,243 @@ const Photo* photoFor (EditorSkin skin)
             static const Photo hilti (HiltiFaceplate_jpg, HiltiFaceplate_jpgSize,
                 { { 43, 131, 851, 795 }, { 906, 131, 540, 795 }, { 954, 805, 100, 19 },
                   { 968, 378, 399, 409 }, { 116, 42, 257, 58 }, { 818, 42, 563, 61 }, { 928, 177, 485, 106 },
-                  815, 1382, 926, 941, 993 });
+                  815, 1382, 926, 941, 993, { 56, 48, 42, 43 }, { 1387, 48, 42, 43 }, {}, {} });
             return &hilti;
         }
     }
     return nullptr;
+}
+
+struct KnobIndex
+{
+    // Measured in a 260 × 260 view of the dial photo.
+    Point<float> inner, outer;
+    float stroke;
+    Colour colour;
+};
+
+constexpr float knobReferenceSize = 260.0f;
+constexpr float photoNoonRotation = -2.23f;
+constexpr int knobTextureSize = 400;
+
+Image removeKnobIndex (const Image& source, const KnobIndex& index)
+{
+    const float scale = (float) knobTextureSize / knobReferenceSize;
+    Image square (Image::RGB, knobTextureSize, knobTextureSize, true);
+    {
+        Graphics g (square);
+        g.drawImage (source, square.getBounds().toFloat());
+    }
+
+    const auto start = index.inner * scale;
+    const auto end = index.outer * scale;
+    const auto direction = (end - start) / start.getDistanceFrom (end);
+    const auto across = Point<float> (-direction.y, direction.x);
+    const Line<float> axis (start, end);
+    const float solidRadius = (index.stroke * 0.5f + 1.5f) * scale;
+    const float feather = 2.0f * scale;
+    const float sampleOffset = solidRadius + feather + scale;
+
+    const auto search = Rectangle<float>::leftTopRightBottom (jmin (start.x, end.x), jmin (start.y, end.y),
+                                                               jmax (start.x, end.x), jmax (start.y, end.y))
+                            .expanded (sampleOffset).getSmallestIntegerContainer().getIntersection (square.getBounds());
+    auto clean = square.createCopy();
+    const Image::BitmapData original (square, Image::BitmapData::readOnly);
+    const Image::BitmapData result (clean, Image::BitmapData::readWrite);
+    const auto sample = [&] (Point<float> p)
+    {
+        return original.getPixelColour (jlimit (0, knobTextureSize - 1, roundToInt (p.x)),
+                                        jlimit (0, knobTextureSize - 1, roundToInt (p.y)));
+    };
+    for (int y = search.getY(); y < search.getBottom(); ++y)
+        for (int x = search.getX(); x < search.getRight(); ++x)
+        {
+            const Point<float> pixel ((float) x, (float) y);
+            const float distance = pixel.getDistanceFrom (axis.findNearestPointTo (pixel));
+            const float amount = jlimit (0.0f, 1.0f, (solidRadius + feather - distance) / feather);
+            if (amount == 0.0f) continue;
+
+            // Reconstruct the narrow index strip from the same flute on either side of it.
+            const auto relative = pixel - start;
+            const float offset = relative.x * across.x + relative.y * across.y;
+            const auto centre = pixel - across * offset;
+            const auto restored = sample (centre - across * sampleOffset)
+                                      .interpolatedWith (sample (centre + across * sampleOffset),
+                                                         jlimit (0.0f, 1.0f, 0.5f + offset / (2.0f * sampleOffset)));
+            result.setPixelColour (x, y, original.getPixelColour (x, y).interpolatedWith (restored, amount));
+        }
+    return clean;
+}
+
+Image makeKnobFace (const Image& source, const KnobIndex& index, float noonRotation, float outerRadius)
+{
+    auto face = removeKnobIndex (source, index);
+    if (noonRotation == 0.0f) return face;
+
+    const auto clean = face.createCopy();
+    Graphics g (face);
+    const auto bounds = face.getBounds().toFloat();
+    const auto centre = bounds.getCentre();
+    // Match the previous noon orientation of the inner face and leave the rim fixed.
+    Path innerFace;
+    innerFace.addEllipse (bounds.withSizeKeepingCentre (bounds.getWidth() * outerRadius, bounds.getHeight() * outerRadius));
+    g.reduceClipRegion (innerFace);
+    g.drawImageTransformed (clean, AffineTransform::rotation (noonRotation, centre.x, centre.y));
+    return face;
+}
+
+struct DialLighting
+{
+    float average = 0.0f;
+    float x = 0.0f, y = 0.0f, xx = 0.0f, xy = 0.0f;
+
+    void add (float brightness, Point<float> direction)
+    {
+        average += brightness;
+        x += brightness * direction.x;
+        y += brightness * direction.y;
+        xx += brightness * (direction.x * direction.x - direction.y * direction.y);
+        xy += brightness * (2.0f * direction.x * direction.y);
+    }
+
+    float directional (Point<float> direction) const
+    {
+        return x * direction.x + y * direction.y
+             + xx * (direction.x * direction.x - direction.y * direction.y)
+             + xy * (2.0f * direction.x * direction.y);
+    }
+};
+
+float knobLuminance (Colour colour)
+{
+    return 0.2126f * colour.getFloatRed() + 0.7152f * colour.getFloatGreen() + 0.0722f * colour.getFloatBlue();
+}
+
+void separateRingLighting (const Image& face, Image& ring, Image& lighting, float innerRadius, float outerRadius)
+{
+    constexpr int samples = 96;
+    constexpr int radius = knobTextureSize / 2;
+    const Point<float> centre ((float) radius, (float) radius);
+    const int first = (int) std::floor ((float) radius * innerRadius) - 1;
+    const int last = (int) std::ceil ((float) radius * outerRadius) + 1;
+    std::array<DialLighting, radius> radialLighting {};
+    const Image::BitmapData original (face, Image::BitmapData::readOnly);
+
+    // Keep the broad directional shading fixed. The remaining detail includes the flutes.
+    for (int r = first; r <= last; ++r)
+    {
+        auto& field = radialLighting[(size_t) r];
+        for (int sample = 0; sample < samples; ++sample)
+        {
+            const auto angle = MathConstants<float>::twoPi * (float) sample / (float) samples;
+            const Point<float> direction (std::cos (angle), std::sin (angle));
+            const auto pixel = (centre + direction * (float) r).roundToInt();
+            field.add (knobLuminance (original.getPixelColour (pixel.x, pixel.y)), direction);
+        }
+        field.average /= (float) samples;
+    }
+
+    const Image::BitmapData detail (ring, Image::BitmapData::readWrite);
+    const Image::BitmapData overlay (lighting, Image::BitmapData::writeOnly);
+    for (int y = radius - last; y < radius + last; ++y)
+        for (int x = radius - last; x < radius + last; ++x)
+        {
+            const auto offset = Point<float> ((float) x + 0.5f, (float) y + 0.5f) - centre;
+            const float distance = offset.getDistanceFromOrigin();
+            if (distance < (float) first || distance >= (float) last) continue;
+
+            const auto direction = offset / distance;
+            const int r = (int) distance;
+            const float fraction = distance - (float) r;
+            const auto& a = radialLighting[(size_t) r];
+            const auto& b = radialLighting[(size_t) r + 1];
+            const float average = jmap (fraction, a.average, b.average);
+            const float delta = jmap (fraction, a.directional (direction), b.directional (direction))
+                              * (2.0f / (float) samples);
+            const bool lightening = delta > 0.0f;
+            const float range = lightening ? 1.0f - average : average;
+            const float alpha = jlimit (0.0f, 0.55f, std::abs (delta) / jmax (0.02f, range));
+            const float light = lightening ? alpha : 0.0f;
+            const auto colour = original.getPixelColour (x, y);
+            const float unlitLuma = (knobLuminance (colour) - light) / (1.0f - alpha);
+            const float relief = jlimit (-0.07f, 0.07f, (unlitLuma - average) * 0.32f);
+            const auto undoLighting = [&] (float channel)
+            {
+                return jlimit (0.0f, 1.0f, (channel - light) / (1.0f - alpha) + relief);
+            };
+            detail.setPixelColour (x, y, Colour::fromFloatRGBA (undoLighting (colour.getFloatRed()),
+                                                               undoLighting (colour.getFloatGreen()),
+                                                               undoLighting (colour.getFloatBlue()), 1.0f));
+            overlay.setPixelColour (x, y, (lightening ? Colours::white : Colours::black).withAlpha (alpha));
+        }
+}
+
+void drawHubRecesses (Graphics& g, Point<float> centre, float hubRadius, float rotation)
+{
+    // Unequal tool recesses make the rotating cap legible at small sizes.
+    const auto turn = AffineTransform::rotation (rotation + 0.29f, centre.x, centre.y);
+    for (const auto& [offset, length] : std::array { Point<float> (-0.69f, 0.66f), Point<float> (0.69f, 0.44f) })
+    {
+        Path slot;
+        slot.addRoundedRectangle (Rectangle<float> (hubRadius * length, hubRadius * 0.21f)
+                                      .withCentre (centre.translated (0.0f, hubRadius * offset)),
+                                  hubRadius * 0.075f);
+        slot.applyTransform (turn);
+        const auto bounds = slot.getBounds();
+        g.setColour (Colours::black.withAlpha (0.70f));
+        g.fillPath (slot);
+        // The bevel catches the same overhead light at every dial angle.
+        g.setGradientFill (ColourGradient (Colours::black.withAlpha (0.86f), bounds.getTopLeft(),
+                                           Colours::white.withAlpha (0.34f), bounds.getBottomLeft(), false));
+        g.strokePath (slot, PathStrokeType (jmax (0.6f, hubRadius * 0.038f),
+                                           PathStrokeType::curved, PathStrokeType::rounded));
+    }
+}
+
+struct KnobArtwork
+{
+    KnobArtwork (const Image& source, KnobIndex index, float noonRotation, float inner, float outer)
+        : face (makeKnobFace (source, index, noonRotation, outer)), ring (face.createCopy()),
+          lighting (Image::ARGB, knobTextureSize, knobTextureSize, true),
+          mark (index), innerRadius (inner), outerRadius (outer)
+    {
+        separateRingLighting (face, ring, lighting, innerRadius, outerRadius);
+    }
+
+    Image face, ring, lighting;
+    const KnobIndex mark;
+    const float innerRadius, outerRadius;
+};
+
+const KnobArtwork& knobFor (EditorSkin skin)
+{
+    switch (skin)
+    {
+        case EditorSkin::makita:
+        {
+            static const KnobArtwork makita (photoFor (EditorSkin::makita)->dial,
+                { { 190.0f, 176.2f }, { 214.9f, 197.9f }, 6.5f, Colour (0xffeeefeb) }, photoNoonRotation, 0.55f, 0.876f);
+            return makita;
+        }
+        case EditorSkin::festool:
+        {
+            static const KnobArtwork festool (photoFor (EditorSkin::festool)->dial,
+                { { 185.7f, 168.3f }, { 219.4f, 194.3f }, 7.0f, Colour (0xffb9ef00) }, photoNoonRotation, 0.455f, 0.876f);
+            return festool;
+        }
+        case EditorSkin::hilti:
+        {
+            static const KnobArtwork hilti (photoFor (EditorSkin::hilti)->dial,
+                { { 186.8f, 172.3f }, { 221.3f, 198.2f }, 8.5f, Colour (0xfff4f4f2) }, photoNoonRotation, 0.455f, 0.876f);
+            return hilti;
+        }
+        case EditorSkin::hammerDrill:
+            break;
+    }
+
+    static const KnobArtwork hammer (mockup().getClippedImage ({ 1037, 419, 325, 337 }),
+        { { 130.9f, 62.6f }, { 130.5f, 16.0f }, 8.0f, Colour (0xfff7f6f1) }, 0.0f, 0.46f, 0.91f);
+    return hammer;
 }
 
 int photoHeaderWidth (const PhotoLayout& source, int top, int dockX)
@@ -218,12 +485,16 @@ void drawPhotoFrame (Graphics& g, const Photo& photo, Rectangle<int> bounds, Rec
     const int width = photoHeaderWidth (src, top, dock.getX());
     const int imageWidth = image.getWidth();
     const int sourceTop = src.waveform.getY();
-    blit (g, image, { 0, 0, src.headerLeftEnd, sourceTop }, { 0, 0, width, top });
+    constexpr int corner = 108;
+    const int cornerWidth = roundToInt ((float) corner * (float) width / (float) src.headerLeftEnd);
+    blitWithScrew (g, image, { 0, 0, corner, sourceTop }, { 0, 0, cornerWidth, top }, src.upperLeftScrew);
+    blit (g, image, { corner, 0, src.headerLeftEnd - corner, sourceTop },
+          { cornerWidth, 0, width - cornerWidth, top });
     // Stretch the unlettered strip between the logo and the preset dock.
     blit (g, image, { src.headerLeftEnd - 4, 0, 4, sourceTop },
           { width, 0, dock.getRight() - width, top });
-    blit (g, image, { src.headerRightStart, 0, imageWidth - src.headerRightStart, sourceTop },
-          { dock.getRight(), 0, bounds.getRight() - dock.getRight(), top });
+    blitWithScrew (g, image, { src.headerRightStart, 0, imageWidth - src.headerRightStart, sourceTop },
+                   { dock.getRight(), 0, bounds.getRight() - dock.getRight(), top }, src.upperRightScrew);
 
     const int h = src.waveform.getHeight();
     blit (g, image, { 0, sourceTop, src.waveform.getX(), h }, { 0, top, wave.getX(), wave.getHeight() });
@@ -247,8 +518,25 @@ void drawPhotoFrame (Graphics& g, const Photo& photo, Rectangle<int> bounds, Rec
     drawFooterRow (src.footerStart, src.keysTop - src.footerStart,
                    wave.getBottom(), keys.getY() - wave.getBottom(), false);
     drawFooterRow (src.keysTop, src.keysBottom - src.keysTop, keys.getY(), keys.getHeight(), true);
-    drawFooterRow (src.keysBottom, image.getHeight() - src.keysBottom,
-                   keys.getBottom(), bounds.getBottom() - keys.getBottom(), false);
+    if (src.lowerLeftScrew.isEmpty() && src.lowerRightScrew.isEmpty())
+    {
+        drawFooterRow (src.keysBottom, image.getHeight() - src.keysBottom,
+                       keys.getBottom(), bounds.getBottom() - keys.getBottom(), false);
+        return;
+    }
+
+    // The lower fasteners straddle the side edges of the key well in the photo.
+    // Use broader slices below the keys so the full screw is in one slice.
+    const int cornerInset = roundToInt ((float) corner * (float) keys.getX() / (float) sourceInset);
+    const int bottom = keys.getBottom();
+    const int height = bounds.getBottom() - bottom;
+    const int sourceHeight = image.getHeight() - src.keysBottom;
+    blitWithScrew (g, image, { 0, src.keysBottom, corner, sourceHeight }, { 0, bottom, cornerInset, height },
+                   src.lowerLeftScrew);
+    blit (g, image, { corner, src.keysBottom, imageWidth - 2 * corner, sourceHeight },
+          { cornerInset, bottom, bounds.getWidth() - 2 * cornerInset, height });
+    blitWithScrew (g, image, { imageWidth - corner, src.keysBottom, corner, sourceHeight },
+                   { bounds.getRight() - cornerInset, bottom, cornerInset, height }, src.lowerRightScrew);
 }
 } // namespace
 
@@ -284,14 +572,15 @@ void drawFrame (Graphics& g, Rectangle<int> bounds, Rectangle<int> wave, Rectang
     const int leftCorner = jmin (roundToInt (104.0f * (float) top / 126.0f), dock.getX() / 2);
     const int brandingWidth = jmin (dock.getX() - leftCorner, 847 * top / 126);
     const int brandingEnd = leftCorner + brandingWidth;
-    blit (g, { 0, 0, 104, 126 }, { 0, 0, leftCorner, top });
+    blitWithScrew (g, mockup(), { 0, 0, 104, 126 }, { 0, 0, leftCorner, top }, { 50, 51, 43, 43 });
     blit (g, { 104, 0, 847, 126 }, { leftCorner, 0, brandingWidth, top });
     // Extend the unlettered housing next to the logo while retaining its top and bottom rails.
     static const auto blankHeader = materialTile ({ 103, 0, 20, 126 });
     g.setFillType (FillType (blankHeader, AffineTransform::scale (0.67f, (float) top / 126.0f)
                                                            .translated ((float) brandingEnd, 0.0f)));
     g.fillRect (brandingEnd, 0, dock.getRight() - brandingEnd, top);
-    blit (g, { 1386, 0, 91, 126 }, { dock.getRight(), 0, bounds.getRight() - dock.getRight(), top });
+    blitWithScrew (g, mockup(), { 1386, 0, 91, 126 }, { dock.getRight(), 0, bounds.getRight() - dock.getRight(), top },
+                   { 1388, 51, 43, 43 });
 
     const int midHeight = wave.getHeight();
     blit (g, { 0, 126, samplePanel.getX(), 761 }, { 0, top, wave.getX(), midHeight });
@@ -310,9 +599,12 @@ void drawFrame (Graphics& g, Rectangle<int> bounds, Rectangle<int> wave, Rectang
         const int h = footerSourceY[row + 1] - y;
         const int targetY = footerY[row];
         const int targetHeight = footerY[row + 1] - targetY;
-        blit (g, { 0, y, footerSourceCorner, h }, { 0, targetY, footerCorner, targetHeight });
+        const auto leftScrew = row == 1 ? Rectangle<int> (28, 988, 42, 42) : Rectangle<int>();
+        const auto rightScrew = row == 1 ? Rectangle<int> (1409, 988, 43, 42) : Rectangle<int>();
+        blitWithScrew (g, mockup(), { 0, y, footerSourceCorner, h }, { 0, targetY, footerCorner, targetHeight }, leftScrew);
         blit (g, { 108, y, 1261, h }, { footerCorner, targetY, bounds.getWidth() - footerCorner * 2, targetHeight });
-        blit (g, { 1369, y, footerSourceCorner, h }, { bounds.getRight() - footerCorner, targetY, footerCorner, targetHeight });
+        blitWithScrew (g, mockup(), { 1369, y, footerSourceCorner, h },
+                       { bounds.getRight() - footerCorner, targetY, footerCorner, targetHeight }, rightScrew);
     }
 }
 
@@ -452,29 +744,49 @@ void drawKeyWell (Graphics& g, Rectangle<int> target)
     g.fillRect (target);
 }
 
-void drawChuck (Graphics& g, Rectangle<float> dial, float angle, EditorSkin skin)
+void drawKnob (Graphics& g, Rectangle<float> dial, float angle, EditorSkin skin)
 {
-    static const auto hammerChuck = mockup().getClippedImage ({ 1037, 419, 325, 337 });
-    const auto* photo = photoFor (skin);
-    const auto& chuck = photo != nullptr ? photo->dial : hammerChuck;
-    g.setOpacity (1.0f);
-    Path rim;
-    rim.addEllipse (dial);
+    const auto& knob = knobFor (skin);
+    const auto centre = dial.getCentre();
+    const auto rotation = angle - MathConstants<float>::twoPi;
     {
         const Graphics::ScopedSaveState saved (g);
+        Path rim;
+        rim.addEllipse (dial);
         g.reduceClipRegion (rim);
-        g.drawImage (chuck, dial);
+        g.setOpacity (1.0f);
+        g.drawImage (knob.face, dial);
+
+        Path flutedRing;
+        flutedRing.setUsingNonZeroWinding (false);
+        flutedRing.addEllipse (dial.withSizeKeepingCentre (dial.getWidth() * knob.outerRadius,
+                                                          dial.getHeight() * knob.outerRadius));
+        flutedRing.addEllipse (dial.withSizeKeepingCentre (dial.getWidth() * knob.innerRadius,
+                                                          dial.getHeight() * knob.innerRadius));
+        g.reduceClipRegion (flutedRing);
+
+        const auto transform = AffineTransform::scale (dial.getWidth() / (float) knobTextureSize,
+                                                      dial.getHeight() / (float) knobTextureSize)
+                                   .translated (dial.getX(), dial.getY())
+                                   .rotated (rotation, centre.x, centre.y);
+        g.drawImageTransformed (knob.ring, transform);
+        g.drawImage (knob.lighting, dial);
     }
 
-    Path turn;
-    turn.addEllipse (dial.reduced (dial.getWidth() * (photo != nullptr ? 0.062f : 0.045f)));
-    const Graphics::ScopedSaveState saved (g);
-    g.reduceClipRegion (turn);
-    const auto centre = dial.getCentre();
-    const auto transform = AffineTransform::scale (dial.getWidth() / (float) chuck.getWidth(),
-                                                  dial.getHeight() / (float) chuck.getHeight())
-                               .translated (dial.getX(), dial.getY())
-                               .rotated (photo != nullptr ? angle - 2.23f : angle, centre.x, centre.y);
-    g.drawImageTransformed (chuck, transform);
+    drawHubRecesses (g, centre, dial.getWidth() * 0.5f * knob.innerRadius, rotation);
+
+    const auto scale = dial.getWidth() / knobReferenceSize;
+    const Point<float> referenceCentre (knobReferenceSize * 0.5f, knobReferenceSize * 0.5f);
+    const auto at = [&] (Point<float> reference)
+    {
+        return centre.getPointOnCircumference (reference.getDistanceFrom (referenceCentre) * scale, angle);
+    };
+
+    Path indicator;
+    indicator.startNewSubPath (at (knob.mark.inner));
+    indicator.lineTo (at (knob.mark.outer));
+    g.setColour (knob.mark.colour);
+    g.strokePath (indicator, PathStrokeType (jmax (1.6f, knob.mark.stroke * scale),
+                                             PathStrokeType::curved, PathStrokeType::rounded));
 }
 } // namespace hammer::artwork

@@ -289,9 +289,8 @@ void LookAndFeel::drawRotarySlider (Graphics& g, int x, int y, int w, int h, flo
     const auto centre = b.getCentre();
     const float radius = jmin (b.getWidth(), b.getHeight()) * (chuck ? 0.435f : 0.40f);
     const auto point = [centre] (float distance, float angle) { return centre.getPointOnCircumference (distance, angle); };
-    const auto disc = [centre] (float r) { return Rectangle<float> (2.0f * r, 2.0f * r).withCentre (centre); };
     const float angle = jmap (pos, start, end);
-    const auto rim = disc (radius);
+    const auto rim = Rectangle<float> (2.0f * radius, 2.0f * radius).withCentre (centre);
     const int ticks = chuck ? 11 : 7;
     for (int i = 0; i < ticks; ++i)
     {
@@ -300,51 +299,16 @@ void LookAndFeel::drawRotarySlider (Graphics& g, int x, int y, int w, int h, flo
         g.drawLine ({ point (radius * 1.05f, a), point (radius * 1.14f, a) }, chuck ? 2.0f : 1.2f);
     }
 
-    if (chuck)
+    if (! chuck)
     {
-        artwork::drawChuck (g, rim, angle, skin);
-        if (slider.hasKeyboardFocus (true))
-        {
-            g.setColour (ratePanelText (skin));
-            g.drawEllipse (rim.expanded (2.5f), 1.2f);
-        }
-        return;
+        g.setColour (ink.withAlpha (0.65f));
+        g.fillEllipse (rim.expanded (2.0f).translated (0.0f, 2.5f));
     }
 
-    g.setColour (ink.withAlpha (0.65f));
-    g.fillEllipse (rim.expanded (2.0f).translated (0.0f, 2.5f));
-    g.setGradientFill (ColourGradient (Colour (0xffc0beb0), rim.getTopLeft(), Colour (0xff53564e), rim.getBottomRight(), false));
-    g.fillEllipse (rim);
-    g.setColour (recess);
-    g.fillEllipse (disc (radius * 0.965f));
-
-    Path fluting;
-    constexpr int flutes = 8;
-    for (int i = 0; i < flutes; ++i)
-    {
-        const float a = angle + MathConstants<float>::twoPi * (float) i / (float) flutes;
-        Path flute;
-        flute.startNewSubPath (point (radius * 0.49f, a - 0.19f));
-        flute.lineTo (point (radius * 0.90f, a - 0.22f));
-        flute.quadraticTo (point (radius * 0.99f, a), point (radius * 0.90f, a + 0.22f));
-        flute.lineTo (point (radius * 0.49f, a + 0.19f));
-        flute.closeSubPath();
-        fluting.addPath (flute);
-    }
-    g.setGradientFill (ColourGradient (Colour (0xff5d6057), rim.getTopLeft(), Colour (0xff252724), rim.getBottomRight(), false));
-    g.fillPath (fluting);
-    g.setColour (ink);
-    g.fillEllipse (disc (radius * 0.55f));
-    g.setGradientFill (ColourGradient (Colour (0xff50534d), centre.translated (-radius, -radius),
-                                       Colour (0xff202220), centre.translated (radius * 0.36f, radius * 0.35f), false));
-    g.fillEllipse (disc (radius * 0.51f));
-    g.setColour (muted.withAlpha (0.28f));
-    g.drawEllipse (disc (radius * 0.51f), 1.0f);
-    g.setColour (accent);
-    g.drawLine ({ point (radius * 0.67f, angle), point (radius * 0.87f, angle) }, 2.0f);
+    artwork::drawKnob (g, rim, angle, skin);
     if (slider.hasKeyboardFocus (true))
     {
-        g.setColour (accent);
+        g.setColour (chuck ? ratePanelText (skin) : accent);
         g.drawEllipse (rim.expanded (2.5f), 1.2f);
     }
 }

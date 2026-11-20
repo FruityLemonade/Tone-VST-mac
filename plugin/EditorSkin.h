@@ -16,9 +16,9 @@ struct EditorSkinInfo
 
 inline constexpr std::array editorSkins {
     EditorSkinInfo { EditorSkin::hammerDrill, "hammer-drill", "Hammer Drill" },
-    EditorSkinInfo { EditorSkin::makita, "makita", "Makita" },
-    EditorSkinInfo { EditorSkin::festool, "festool", "Festool" },
-    EditorSkinInfo { EditorSkin::hilti, "hilti", "Hilti" }
+    EditorSkinInfo { EditorSkin::makita, "makita", "Makitone" },
+    EditorSkinInfo { EditorSkin::festool, "festool", "Festone" },
+    EditorSkinInfo { EditorSkin::hilti, "hilti", "Hiltone" }
 };
 
 inline EditorSkin editorSkinFromId (const juce::String& id)
