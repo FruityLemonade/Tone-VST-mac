@@ -29,19 +29,18 @@ public:
         for (auto& v : voices) v.release (fade);
     }
 
-    void render (const SampleView& s, double pitchMul, float& l, float& r) noexcept
+    void render (const SampleView& s, double pitchA, double pitchB, float& l, float& r) noexcept
     {
         float vl = 0.0f, vr = 0.0f;
         for (int i = 0; i < kMaxVoices; ++i)
-            if (voices[i].isActive()) voices[i].render (s, pitchMul, vl, vr);
+            if (voices[i].isActive()) voices[i].render (s, voices[i].usesSliceB() ? pitchB : pitchA, vl, vr);
         l += vl * gainL;
         r += vr * gainR;
     }
 
     int activeCount() const noexcept;
     int nonReleasingCount() const noexcept;
-    /// Position of the newest active voice, or -1.
-    double newestPosition() const noexcept;
+    const HitVoice* newestVoice() const noexcept;
 
 private:
     HitVoice voices[kMaxVoices];

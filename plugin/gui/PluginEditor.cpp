@@ -121,10 +121,10 @@ XtoneEditor::XtoneEditor (XtoneProcessor& p)
     wordmark.onClick = [this] { about->show(); };
     addAndMakeVisible (wordmark);
 
-    const auto groups = p.getParameterTree().getSubgroups (false);
-    for (int i = 0; i < groups.size(); ++i)
+    const auto& names = params.getPageNames();
+    for (int i = 0; i < names.size(); ++i)
     {
-        auto* key = keys.add (new TextButton (groups[i]->getName()));
+        auto* key = keys.add (new TextButton (names[i]));
         key->getProperties().set ("key", true);
         key->setRadioGroupId (2, dontSendNotification);
         key->setClickingTogglesState (true);

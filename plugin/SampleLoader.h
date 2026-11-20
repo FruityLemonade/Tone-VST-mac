@@ -7,6 +7,8 @@
 
 #include <memory>
 
+class XtoneProcessor;
+
 namespace xtp
 {
 /// Decoded audio: channel 0 = L, 1 = R (copy of L for mono), 2 = mono mix.
@@ -48,6 +50,8 @@ public:
     juce::ValueTree getSlicesTree() const;
 
 private:
+    friend class ::XtoneProcessor;
+    uint32_t publicationId = 0;
     mutable juce::ValueTree cachedSampleTree;
 };
 

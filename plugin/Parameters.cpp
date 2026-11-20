@@ -14,7 +14,7 @@ namespace
 {
     String U (const char* s) { return String::fromUTF8 (s); }
 
-    ParameterID pid (const char* id) { return ParameterID { id, 1 }; }
+    ParameterID pid (const char* id, int version = 1) { return ParameterID { id, version }; }
 
     NormalisableRange<float> logRange (float lo, float hi)
     {
@@ -50,13 +50,13 @@ namespace
             .withValueFromStringFunction ([] (const String& s) { return s.getIntValue(); });
     }
 
-} // namespace
+    auto sliceIntAttr()
+    {
+        return AudioParameterIntAttributes().withStringFromValueFunction ([] (int v, int) { return String (v + 1); })
+            .withValueFromStringFunction ([] (const String& s) { return jlimit (1, 128, s.getIntValue()) - 1; });
+    }
 
-StringArray groupOrder()
-{
-    return { "Rate", "MIDI", "Snap", "Retrigger", "Sample", "A/B", "Ramp", "LFO 1", "LFO 2",
-             "Unison", "Sequencer", "Envelope", "Output" };
-}
+} // namespace
 
 AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
 {
@@ -124,7 +124,7 @@ AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
     // ---- Sample
     {
         auto g = std::make_unique<AudioProcessorParameterGroup> ("sample", "Sample", "|");
-        g->addChild (std::make_unique<API> (pid ("slice"), "Slice", 0, 127, 0));
+        g->addChild (std::make_unique<API> (pid ("slice"), "Slice", 0, 127, 0, sliceIntAttr()));
         g->addChild (std::make_unique<APF> (pid ("scan"), "Start Scan", NormalisableRange<float> (0.0f, 100.0f, 0.01f), 0.0f, unitAttr ("%", 2)));
         g->addChild (std::make_unique<APF> (pid ("length"), "Length", NormalisableRange<float> (1.0f, 100.0f, 0.01f), 100.0f, unitAttr ("%", 2)));
         g->addChild (std::make_unique<APB> (pid ("reverse"), "Reverse", false));
@@ -136,12 +136,12 @@ AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
         g->addChild (std::make_unique<APF> (pid ("penv_decay"), "Pitch Env Decay", skewRange (0.1f, 2000.0f, 100.0f), 50.0f, unitAttr ("ms", 1)));
         layout.add (std::move (g));
     }
-    // ---- A/B
+    // ---- Cycling
     {
-        auto g = std::make_unique<AudioProcessorParameterGroup> ("ab", "A/B", "|");
-        g->addChild (std::make_unique<APC> (pid ("ab_mode"), "A/B Mode", StringArray { "Off", "AB", "AAB", "ABB", "Random" }, 0));
-        g->addChild (std::make_unique<API> (pid ("ab_slice"), "Slice B", 0, 127, 1));
-        g->addChild (std::make_unique<APF> (pid ("ab_pitch"), "Pitch B", NormalisableRange<float> (-24.0f, 24.0f, 0.01f), 0.0f, unitAttr ("st", 2)));
+        auto g = std::make_unique<AudioProcessorParameterGroup> ("ab", "Cycling", "|");
+        g->addChild (std::make_unique<APC> (pid ("ab_mode"), "Cycling Pattern", StringArray { "Off", "AB", "AAB", "ABB", "Random" }, 0));
+        g->addChild (std::make_unique<API> (pid ("ab_slice"), "Slice B", 0, 127, 1, sliceIntAttr()));
+        g->addChild (std::make_unique<APF> (pid ("ab_pitch"), "Pitch Offset B", NormalisableRange<float> (-24.0f, 24.0f, 0.01f), 0.0f, unitAttr ("st", 2)));
         g->addChild (std::make_unique<APF> (pid ("ab_gain"), "Gain B", NormalisableRange<float> (-24.0f, 6.0f, 0.1f), 0.0f, unitAttr ("dB", 1)));
         layout.add (std::move (g));
     }
@@ -216,6 +216,21 @@ AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
         g->addChild (std::make_unique<APF> (pid ("out_gain"), "Output Gain", NormalisableRange<float> (-48.0f, 12.0f, 0.1f), -3.0f, unitAttr ("dB", 1)));
         layout.add (std::move (g));
     }
+
+    // Append B's new playback parameters to preserve existing host parameter ordering.
+    {
+        auto g = std::make_unique<AudioProcessorParameterGroup> ("ab_playback", "Cycling Playback", "|");
+        g->addChild (std::make_unique<APF> (pid ("ab_scan", 2), "Start Scan B", NormalisableRange<float> (0.0f, 100.0f, 0.01f), 0.0f, unitAttr ("%", 2)));
+        g->addChild (std::make_unique<APF> (pid ("ab_length", 2), "Length B", NormalisableRange<float> (1.0f, 100.0f, 0.01f), 100.0f, unitAttr ("%", 2)));
+        g->addChild (std::make_unique<APB> (pid ("ab_reverse", 2), "Reverse B", false));
+        g->addChild (std::make_unique<APC> (pid ("ab_interp", 2), "Interpolation B", StringArray { "Hermite", "Linear", "Raw" }, 0));
+        g->addChild (std::make_unique<APB> (pid ("ab_mono", 2), "Mono B", true));
+        g->addChild (std::make_unique<APF> (pid ("ab_sample_pitch", 2), "Sample Pitch B", NormalisableRange<float> (-48.0f, 48.0f, 0.01f), 0.0f, unitAttr ("st", 2)));
+        g->addChild (std::make_unique<APF> (pid ("ab_fine", 2), "Fine Tune B", NormalisableRange<float> (-100.0f, 100.0f, 0.1f), 0.0f, unitAttr ("ct", 1)));
+        g->addChild (std::make_unique<APF> (pid ("ab_penv_amt", 2), "Pitch Env Amount B", NormalisableRange<float> (-48.0f, 48.0f, 0.01f), 0.0f, unitAttr ("st", 2)));
+        g->addChild (std::make_unique<APF> (pid ("ab_penv_decay", 2), "Pitch Env Decay B", skewRange (0.1f, 2000.0f, 100.0f), 50.0f, unitAttr ("ms", 1)));
+        layout.add (std::move (g));
+    }
     return layout;
 }
 
@@ -239,6 +254,9 @@ ParamSnapshot::ParamSnapshot (AudioProcessorValueTreeState& s)
     slice = get ("slice"); scan = get ("scan"); length = get ("length"); reverse = get ("reverse"); interp = get ("interp");
     mono = get ("mono"); sPitch = get ("s_pitch"); sFine = get ("s_fine"); penvAmt = get ("penv_amt"); penvDecay = get ("penv_decay");
     abMode = get ("ab_mode"); abSlice = get ("ab_slice"); abPitch = get ("ab_pitch"); abGain = get ("ab_gain");
+    abScan = get ("ab_scan"); abLength = get ("ab_length"); abReverse = get ("ab_reverse"); abInterp = get ("ab_interp");
+    abMono = get ("ab_mono"); abSamplePitch = get ("ab_sample_pitch"); abFine = get ("ab_fine");
+    abPenvAmt = get ("ab_penv_amt"); abPenvDecay = get ("ab_penv_decay");
     rampOn = get ("ramp_on"); rampStart = get ("ramp_start"); rampEnd = get ("ramp_end"); rampTime = get ("ramp_time");
     rampCurve = get ("ramp_curve"); rampLoop = get ("ramp_loop"); rampLegato = get ("ramp_legato");
     for (int n = 0; n < 2; ++n)
@@ -274,6 +292,9 @@ void ParamSnapshot::read (xt::EngineParams& p) const noexcept
     p.slice = i (slice); p.scan = pc (scan); p.length = pc (length); p.reverse = b (reverse); p.interp = i (interp);
     p.mono = b (mono); p.sPitch = d (sPitch); p.sFine = d (sFine); p.penvAmt = d (penvAmt); p.penvDecayMs = d (penvDecay);
     p.abMode = i (abMode); p.abSlice = i (abSlice); p.abPitch = d (abPitch); p.abGainDb = d (abGain);
+    p.abScan = pc (abScan); p.abLength = pc (abLength); p.abReverse = b (abReverse); p.abInterp = i (abInterp);
+    p.abMono = b (abMono); p.abSamplePitch = d (abSamplePitch); p.abFine = d (abFine);
+    p.abPenvAmt = d (abPenvAmt); p.abPenvDecayMs = d (abPenvDecay);
     p.rampOn = b (rampOn); p.rampStart = d (rampStart); p.rampEnd = d (rampEnd); p.rampTimeMs = d (rampTime);
     p.rampCurve = d (rampCurve); p.rampLoop = i (rampLoop); p.rampLegato = b (rampLegato);
     for (int n = 0; n < 2; ++n)

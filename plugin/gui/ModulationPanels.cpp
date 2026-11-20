@@ -234,10 +234,106 @@ private:
     xt::Adsr::Stage liveStage = xt::Adsr::Stage::Idle;
 };
 
-class EnvelopePanel final : public Component
+class OutputMeter final : public Component, private Timer
 {
 public:
-    explicit EnvelopePanel (XtoneProcessor& p) : graph (p)
+    explicit OutputMeter (XtoneProcessor& p) : processor (p)
+    {
+        setTitle ("Stereo output peak meter");
+        clip.setTitle ("Clear held output clipping");
+        clip.setTooltip ("Lights when the output reaches 0 dBFS. Click to clear.");
+        clip.onClick = [this] { processor.clearOutputClip(); updateClip(); };
+        addAndMakeVisible (clip);
+        updateClip();
+        startTimerHz (30);
+    }
+
+    void resized() override { clip.setBounds (getLocalBounds().reduced (7, 3).removeFromTop (19).removeFromRight (46)); }
+
+    void paint (Graphics& g) override
+    {
+        const auto panel = getLocalBounds().toFloat().reduced (0.5f);
+        g.setColour (hammer::recess);
+        g.fillRoundedRectangle (panel, 5.0f);
+        g.setColour (hammer::edge);
+        g.drawRoundedRectangle (panel, 5.0f, 1.0f);
+        g.setColour (hammer::muted);
+        g.setFont (hammer::mono (10.5f, Font::bold));
+        g.drawText ("OUTPUT PEAK  dBFS", 8, 4, getWidth() - 65, 17, Justification::centredLeft);
+
+        const float left = 24.0f, right = (float) getWidth() - 13.0f;
+        const auto xAt = [left, right] (float db) { return jmap (jlimit (-48.0f, 0.0f, db), -48.0f, 0.0f, left, right); };
+        const auto accent = hammer::accentFor (*this);
+        for (size_t channel = 0; channel < level.size(); ++channel)
+        {
+            const int y = 27 + (int) channel * 13;
+            g.setColour (hammer::muted);
+            g.drawText (channel == 0 ? "L" : "R", 7, y - 2, 12, 12, Justification::centred);
+            g.setColour (hammer::edge);
+            g.fillRoundedRectangle (Rectangle<float> (left, (float) y, right - left, 7.0f), 2.0f);
+            g.setColour (accent);
+            g.fillRoundedRectangle (Rectangle<float> (left, (float) y, xAt (level[channel]) - left, 7.0f), 2.0f);
+            if (peak[channel] > -48.0f)
+            {
+                g.setColour (hammer::text);
+                g.fillRect (xAt (peak[channel]) - 1.0f, (float) y - 1.0f, 2.0f, 9.0f);
+            }
+        }
+
+        g.setColour (hammer::muted);
+        g.setFont (hammer::mono (9.5f));
+        for (const int db : { -48, -24, -12, -6, 0 })
+            g.drawText (String (db), roundToInt (xAt ((float) db)) - 12, 52, 24, 14, Justification::centred);
+    }
+
+private:
+    void updateClip()
+    {
+        const bool active = processor.hasOutputClipped();
+        const auto colour = active ? Colour (0xffff6556) : hammer::muted;
+        if (! clip.isColourSpecified (TextButton::textColourOffId) || clip.findColour (TextButton::textColourOffId) != colour)
+            clip.setColour (TextButton::textColourOffId, colour);
+    }
+
+    void timerCallback() override
+    {
+        const double now = Time::getMillisecondCounterHiRes() * 0.001;
+        const auto drop = (float) ((now - lastUpdate) * 30.0);
+        lastUpdate = now;
+        bool changed = false;
+        for (size_t channel = 0; channel < level.size(); ++channel)
+        {
+            const auto next = Decibels::gainToDecibels (processor.takeOutputPeak ((int) channel), -48.0f);
+            const auto displayed = jmax (next, level[channel] - drop);
+            if (next > -48.0f && next >= peak[channel])
+            {
+                peak[channel] = next;
+                holdUntil[channel] = now + 0.75;
+                changed = true;
+            }
+            else if (now > holdUntil[channel] && peak[channel] > -48.0f)
+            {
+                peak[channel] = jmax (displayed, peak[channel] - drop);
+                changed = true;
+            }
+            changed = changed || ! approximatelyEqual (displayed, level[channel]);
+            level[channel] = displayed;
+        }
+        updateClip();
+        if (changed) repaint();
+    }
+
+    XtoneProcessor& processor;
+    TextButton clip { "CLIP" };
+    std::array<float, 2> level { -48.0f, -48.0f }, peak { -48.0f, -48.0f };
+    std::array<double, 2> holdUntil {};
+    double lastUpdate = Time::getMillisecondCounterHiRes() * 0.001;
+};
+
+class AmpPanel final : public Component
+{
+public:
+    explicit AmpPanel (XtoneProcessor& p) : graph (p), meter (p)
     {
         addAndMakeVisible (graph);
         for (size_t i = 0; i < controls.size(); ++i)
@@ -245,26 +341,78 @@ public:
             controls[i] = std::make_unique<ParameterControl> (*p.apvts.getParameter (envelopeIds[i]), p.apvts, String(), true);
             addAndMakeVisible (*controls[i]);
         }
+        addAndMakeVisible (meter);
+        constexpr const char* outputIds[] { "drive", "out_gain", "clip", "os" };
+        for (size_t i = 0; i < output.size(); ++i)
+        {
+            using Style = ParameterControl::Style;
+            output[i] = std::make_unique<ParameterControl> (*p.apvts.getParameter (outputIds[i]), p.apvts, String(), true,
+                                                            i < 2 ? Style::knob : Style::bar);
+            addAndMakeVisible (*output[i]);
+        }
+    }
+
+    int minimumHeightForWidth (int width) const
+    {
+        return 12 + graphMinHeight + (int) (controls.size() / columnsForWidth (width)) * rowHeight
+                  + 2 * sectionGap + meterHeight + knobHeight + rowHeight;
     }
 
     void resized() override
     {
         auto content = getLocalBounds().reduced (6);
-        constexpr int rowHeight = 48;
-        const size_t columns = content.getWidth() >= 440 ? 4 : 2;
-        auto rows = content.removeFromBottom (rowHeight * (int) (controls.size() / columns));
-        graph.setBounds (content.withTrimmedBottom (7));
+        const auto columns = columnsForWidth (getWidth());
+        const int graphHeight = jlimit (graphMinHeight, 153,
+                                        graphMinHeight + getHeight() - minimumHeightForWidth (getWidth()));
+        graph.setBounds (content.removeFromTop (graphHeight));
         for (size_t first = 0; first < controls.size(); first += columns)
         {
-            auto row = rows.removeFromTop (rowHeight);
+            auto row = content.removeFromTop (rowHeight);
             for (size_t offset = 0; offset < columns; ++offset)
                 controls[first + offset]->setBounds (row.removeFromLeft (row.getWidth() / (int) (columns - offset)));
         }
+        content.removeFromTop (sectionGap);
+        meter.setBounds (content.removeFromTop (meterHeight));
+        content.removeFromTop (sectionGap);
+        auto knobs = content.removeFromTop (knobHeight);
+        output[0]->setBounds (knobs.removeFromLeft (knobs.getWidth() / 2));
+        output[1]->setBounds (knobs);
+        auto options = content.removeFromTop (rowHeight);
+        output[2]->setBounds (options.removeFromLeft (options.getWidth() / 2));
+        output[3]->setBounds (options);
     }
 
 private:
+    static constexpr int graphMinHeight = 90, rowHeight = 36, sectionGap = 5, meterHeight = 67, knobHeight = 106;
+    static size_t columnsForWidth (int width) { return width >= 312 ? 4 : 2; }
+
     EnvelopeGraph graph;
     std::array<std::unique_ptr<ParameterControl>, 4> controls;
+    OutputMeter meter;
+    std::array<std::unique_ptr<ParameterControl>, 4> output;
+};
+
+class AmpPage final : public Component
+{
+public:
+    explicit AmpPage (XtoneProcessor& p) : panel (p)
+    {
+        view.setViewedComponent (&panel, false);
+        view.setScrollBarsShown (true, false);
+        addAndMakeVisible (view);
+    }
+
+    void resized() override
+    {
+        view.setBounds (getLocalBounds());
+        const bool needsScrollBar = getHeight() < panel.minimumHeightForWidth (getWidth());
+        const int width = jmax (0, getWidth() - (needsScrollBar ? view.getScrollBarThickness() : 0));
+        panel.setSize (width, jmax (getHeight(), panel.minimumHeightForWidth (width)));
+    }
+
+private:
+    AmpPanel panel;
+    Viewport view;
 };
 
 float previewWave (int shape, float phase)
@@ -437,9 +585,9 @@ private:
 };
 } // namespace
 
-std::unique_ptr<Component> hammer::makeEnvelopePanel (XtoneProcessor& processor)
+std::unique_ptr<Component> hammer::makeAmpPanel (XtoneProcessor& processor)
 {
-    return std::make_unique<EnvelopePanel> (processor);
+    return std::make_unique<AmpPage> (processor);
 }
 
 std::unique_ptr<Component> hammer::makeLfoPanel (State& state, const String& groupId)

@@ -5,10 +5,12 @@
 class ParameterControl final : public juce::Component
 {
 public:
-    enum class Style { bar, knob };
+    enum class Style { bar, knob, slice };
     ParameterControl (juce::RangedAudioParameter&, juce::AudioProcessorValueTreeState&,
                       juce::String caption = {}, bool stacked = false, Style style = Style::bar);
-    int preferredHeight() const noexcept { return style == Style::knob ? 96 : 35; }
+    ~ParameterControl() override;
+    void setSliceCount (int count);
+    int preferredHeight() const noexcept { return style == Style::knob ? 96 : 36; }
     void resized() override;
 
 private:
@@ -22,4 +24,8 @@ private:
     std::unique_ptr<State::SliderAttachment> valueAttachment;
     std::unique_ptr<State::ComboBoxAttachment> choiceAttachment;
     std::unique_ptr<State::ButtonAttachment> toggleAttachment;
+    std::unique_ptr<juce::ParameterAttachment> sliceAttachment;
+    std::unique_ptr<juce::Label> onlySlice;
+    int sliceCount = 0, storedSlice = 0;
+    bool sliceGesture = false;
 };

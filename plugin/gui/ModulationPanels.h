@@ -6,6 +6,6 @@ class XtoneProcessor;
 
 namespace hammer
 {
-std::unique_ptr<juce::Component> makeEnvelopePanel (XtoneProcessor&);
+std::unique_ptr<juce::Component> makeAmpPanel (XtoneProcessor&);
 std::unique_ptr<juce::Component> makeLfoPanel (juce::AudioProcessorValueTreeState&, const juce::String& parameterGroupId);
 }

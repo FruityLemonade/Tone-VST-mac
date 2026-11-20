@@ -4,6 +4,7 @@
 #include "TestHelpers.h"
 
 #include <catch2/catch_test_macros.hpp>
+#include <array>
 #include <cmath>
 
 using namespace xt;
@@ -341,4 +342,128 @@ TEST_CASE ("Engine: release makes the engine idle", "[engine]")
     CHECK (peakAbs (out.l, 0, 10000) > 0.1);
     CHECK (peakAbs (out.l, 20000) < 1e-3);
     CHECK (e.activeVoiceCount() == 0);
+}
+
+TEST_CASE ("T9 Cycling uses the selected pattern and B pitch and gain", "[T9]")
+{
+    constexpr double fs = 48000.0;
+    constexpr int period = 128;
+    std::vector<float> sample (2000, -0.25f);
+    for (int i = 1000; i < 2000; ++i) sample[(size_t) i] = 0.5f + (float) (i - 1000) * 0.0005f;
+    OwnedSource src (std::move (sample), fs, { 1000 });
+    constexpr std::array<std::array<bool, 6>, 4> patterns {{
+        { false, false, false, false, false, false }, { false, true, false, true, false, true },
+        { false, false, true, false, false, true }, { false, true, true, false, true, true }
+    }};
+    Engine e;
+    e.setEngineRate (fs);
+    e.setSource (src.view());
+    e.setDcBlockerEnabled (false);
+    auto p = cleanParams();
+    p.rateSrc = 1;
+    p.hz = fs / period;
+    p.envR = 0.0;
+    p.abPitch = 12.0;
+    p.abGainDb = 20.0 * std::log10 (0.5);
+    for (size_t mode = 0; mode < patterns.size(); ++mode)
+    {
+        p.abMode = (int) mode;
+        e.setParams (p);
+        e.reset();
+        const auto out = render (e, period * 8, 79, { noteOn (0, 60), noteOff (period * 6, 60), noteOn (period * 7, 60) });
+        for (size_t hit = 0; hit < patterns[mode].size(); ++hit)
+        {
+            INFO ("Mode " << mode << " hit " << hit);
+            const auto at = hit * period + 12;
+            CHECK (std::abs (out.l[at] - (patterns[mode][hit] ? 0.256f : -0.25f)) < 0.001f);
+        }
+        CHECK (out.l[period * 7 + 12] < 0.0f);
+    }
+    p.abMode = 4;
+    e.setParams (p);
+    e.reset();
+    const auto random = render (e, period * 32, 79, { noteOn (0, 60) });
+    CHECK (std::ranges::min (random.l) < -0.1f);
+    CHECK (std::ranges::max (random.l) > 0.1f);
+}
+
+TEST_CASE ("Slice audition is a one-shot in the selected playback window", "[engine]")
+{
+    constexpr double fs = 48000.0;
+    std::vector<float> sample (2000, -0.25f);
+    std::fill (sample.begin() + 1000, sample.end(), 0.5f);
+    OwnedSource src (std::move (sample), fs, { 1000 });
+    Engine e;
+    e.setEngineRate (fs);
+    e.setSource (src.view());
+    e.setDcBlockerEnabled (false);
+    auto p = cleanParams();
+    p.scan = 0.25;
+    p.length = 0.5;
+    p.reverse = true;
+    e.setParams (p);
+    e.reset();
+
+    e.auditionSlice (1);
+    const auto beginning = render (e, 64, 64, {});
+    CHECK (beginning.l.back() > 0.3f);
+    CHECK (e.telemetry.auditionSlice.load() == 1);
+    CHECK (std::abs (e.telemetry.auditionPos.load() - (1625.0 - 64.0) / 2000.0) < 1.0e-4);
+    CHECK_FALSE (e.telemetry.active.load());
+    const auto ending = render (e, 520, 67, {});
+    CHECK (peakAbs (ending.l, 436) == 0.0);
+    CHECK (e.telemetry.auditionSlice.load() == -1);
+    CHECK (e.getParams().slice == 0);
+
+    e.auditionSlice (1);
+    e.setSource (src.view());
+    CHECK (peakAbs (render (e, 64, 64, {}).l) == 0.0);
+}
+
+TEST_CASE ("Cycling and audition use the independent B playback window", "[engine]")
+{
+    constexpr double fs = 48000.0;
+    constexpr int period = 128, frames = 4096;
+    OwnedSource src (std::vector<float> (frames, -0.25f), fs, { frames / 2 });
+    std::vector<float> left (frames, 0.6f), right (frames, -0.4f);
+    auto source = src.view();
+    source.sample.ch[0] = left.data();
+    source.sample.ch[1] = right.data();
+    source.sample.numCh = 2;
+    Engine e;
+    e.setEngineRate (fs);
+    e.setSource (source);
+    e.setDcBlockerEnabled (false);
+
+    auto p = cleanParams();
+    p.rateSrc = 1;
+    p.hz = fs / period;
+    p.sPitch = -12.0;
+    p.abMode = 1;
+    p.abScan = 0.25;
+    p.abLength = 0.5;
+    p.abReverse = true;
+    p.abMono = false;
+    p.abSamplePitch = 11.5;
+    p.abFine = 50.0;
+    p.abPenvAmt = 12.0;
+    p.abPenvDecayMs = 1000.0;
+    e.setParams (p);
+    e.reset();
+
+    constexpr double bEnd = 3328.0;
+    const auto cycling = render (e, period + 16, 37, { noteOn (0, 60) });
+    CHECK (cycling.l[32] == cycling.r[32]);
+    CHECK (cycling.l[32] < 0.0f);
+    CHECK (cycling.l.back() > 0.5f);
+    CHECK (cycling.r.back() < -0.3f);
+    CHECK (e.telemetry.slice.load() == 1);
+    CHECK (std::abs (e.telemetry.playPos.load() * frames - (bEnd - 16.0 * 4.0)) < 3.0);
+
+    e.reset();
+    e.auditionSlice (1, true);
+    const auto preview = render (e, 64, 64, {});
+    CHECK (preview.l.back() > 0.3f);
+    CHECK (preview.r.back() < -0.2f);
+    CHECK (std::abs (e.telemetry.auditionPos.load() * frames - (bEnd - 64.0)) < 0.1);
 }

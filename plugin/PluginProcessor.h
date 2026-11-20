@@ -47,6 +47,10 @@ public:
     // ---- for the editor (message thread)
     juce::AudioProcessorValueTreeState apvts;
     const xt::Telemetry& telemetry() const noexcept { return engine.telemetry; }
+    void auditionSlice (const xtp::SampleAsset& asset, int index, bool useB);
+    float takeOutputPeak (int channel) noexcept { return outputPeaks[channel].exchange (0.0f, std::memory_order_relaxed); }
+    bool hasOutputClipped() const noexcept { return outputClipped.load (std::memory_order_relaxed); }
+    void clearOutputClip() noexcept { outputClipped.store (false, std::memory_order_relaxed); }
 
     /// Asynchronous load (decodes on a background thread).
     void loadSampleFile (const juce::File& f);
@@ -86,6 +90,9 @@ private:
     double hostRate { 48000.0 };
 
     std::vector<xt::MidiEvent> events; // preallocated
+    std::atomic<uint64_t> auditionRequest { 0 }; // publication in the upper bits, (slice + 1) and B flag below
+    std::atomic<float> outputPeaks[2] {};
+    std::atomic<bool> outputClipped { false };
 
     // asset hand-over
     std::atomic<xtp::SampleAsset*> pending { nullptr };

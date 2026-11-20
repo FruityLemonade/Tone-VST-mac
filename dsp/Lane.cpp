@@ -50,11 +50,11 @@ int Lane::nonReleasingCount() const noexcept
     return n;
 }
 
-double Lane::newestPosition() const noexcept
+const HitVoice* Lane::newestVoice() const noexcept
 {
     const HitVoice* best = nullptr;
     for (auto& v : voices)
         if (v.isActive() && ! v.isReleasing() && (best == nullptr || v.getStamp() > best->getStamp())) best = &v;
-    return best ? best->getPosition() : -1.0;
+    return best;
 }
 } // namespace xt

@@ -3,11 +3,13 @@
 
 #include "../SampleLoader.h"
 
+#include <optional>
+
 class XtoneProcessor;
 
 /// Waveform with independent selected and playing slices.
-/// Click selects a slice. Double-click adds a marker, drag moves it, right-click removes it.
-class WaveformView : public juce::Component, private juce::Timer, private juce::ScrollBar::Listener
+/// Click selects a slice, Option-click auditions it, and the playback handles trim its window.
+class WaveformView : public juce::Component, public juce::SettableTooltipClient, private juce::Timer, private juce::ScrollBar::Listener
 {
 public:
     explicit WaveformView (XtoneProcessor&);
@@ -23,7 +25,30 @@ public:
     void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
 
 private:
+    struct WindowSettings
+    {
+        float scan = 0.0f, length = 100.0f;
+        bool reverse = false;
+        bool operator== (const WindowSettings& other) const noexcept
+        {
+            return reverse == other.reverse && juce::approximatelyEqual (scan, other.scan)
+                && juce::approximatelyEqual (length, other.length);
+        }
+    };
+
+    struct TrimHandle { bool sliceB, startsPlayback; };
+
+    struct TrimDrag
+    {
+        TrimHandle handle;
+        xt::SliceWindow slice, initialWindow;
+        double framesPerPixel;
+        float anchorX, initialScan;
+        bool leftEdge, gestureStarted = false;
+    };
+
     void timerCallback() override;
+    void updatePlotState();
     void scrollBarMoved (juce::ScrollBar*, double start) override;
     void updateAsset();
     void updateStatus();
@@ -40,6 +65,15 @@ private:
     double xToFrame (float x) const;
     float frameToX (double frame) const;
     int markerAt (float x) const;
+    int sliceAt (float x) const;
+    int windowSlice (bool sliceB) const;
+    xt::SliceWindow sliceBounds (int index) const;
+    xt::SliceWindow playbackWindow (bool sliceB) const;
+    float windowRailY (bool sliceB) const;
+    juce::Rectangle<float> trimHandleBounds (const TrimHandle&, double frame) const;
+    std::optional<TrimHandle> trimHandleAt (juce::Point<float>) const;
+    void dragTrim (float x);
+    void finishTrim();
     void selectSlice (int index);
 
     XtoneProcessor& proc;
@@ -53,8 +87,9 @@ private:
 
     struct PlotState
     {
-        float position = -1.0f, scan = 0.0f, length = 100.0f;
-        int selectedSlice = 0, playingSlice = -1;
+        float position = -1.0f, auditionPosition = -1.0f;
+        WindowSettings windowA, windowB;
+        int selectedSlice = 0, cyclingSlice = -1, playingSlice = -1, auditionSlice = -1;
     };
 
     xtp::SampleAsset::Ptr asset;
@@ -62,7 +97,9 @@ private:
     juce::String detectionMessage;
     bool sliceMenuOpen = false;
     bool selectOnRelease = false;
+    bool auditionOnRelease = false;
     double visibleStart { 0.0 }, visibleLength { 0.0 };
     int dragIndex { -1 };
     xt::SliceModel dragSlices;
+    std::optional<TrimDrag> trimDrag;
 };

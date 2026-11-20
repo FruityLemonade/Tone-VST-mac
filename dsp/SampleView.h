@@ -1,4 +1,5 @@
 #pragma once
+#include <algorithm>
 #include <cstdint>
 
 namespace xt
@@ -24,4 +25,21 @@ struct SourceView
 
     bool valid() const noexcept { return sample.valid() && bounds != nullptr && numSlices > 0; }
 };
+
+inline int wrapSliceIndex (int index, int count) noexcept
+{
+    count = std::max (1, count);
+    const int wrapped = index % count;
+    return wrapped < 0 ? wrapped + count : wrapped;
+}
+
+struct SliceWindow { double start, end; };
+
+inline SliceWindow sliceWindow (double start, double end, double scan, double length) noexcept
+{
+    const double span = std::max (1.0, end - start);
+    const double size = std::max (1.0, std::clamp (length, 0.01, 1.0) * span);
+    const double offset = std::clamp (scan, 0.0, 1.0) * (span - size);
+    return { start + offset, start + offset + size };
+}
 } // namespace xt

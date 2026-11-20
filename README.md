@@ -32,12 +32,12 @@ The macOS bundles are ad hoc signed and have no Apple notarization.
 | M0 Foundation | Repository, CMake, CI, built-in kick, parameter editor | Complete |
 | M1 Core engine | BPM, Hz, and host-synced clock, note divisions, subsample timing, Cut and Declick, gate, pitch, sample loading and embedding, ADSR, pitch modes, glide, pitch bend, and live readouts | Implemented, pending acceptance testing |
 | M2 Slicing | Slice markers, waveform editing and zoom, transient detection, MIDI slice selection, scan, length, reverse, overlap, and pitch envelope | Available |
-| M3 Character | Oversampling, drive, clipping, DC filtering, mono, A/B, jitter, and Tune Snap | Available except A/B |
+| M3 Character | Oversampling, drive, clipping, DC filtering, mono, slice cycling, jitter, and Tune Snap | Available |
 | M4 Modulation | Ramp, LFO 1 and 2, and unison | Unison available |
 | M5 Sequencer | Step sequencer and grid | Planned |
 | M6 Release | Factory presets, documentation, and v1.0.0 | Factory presets available. v1.0.0 pending. |
 
-The editor already exposes **A/B**, **Ramp**, **LFO 1**, **LFO 2**, and **Sequencer** controls with stable parameter IDs. These features are pending implementation.
+The editor exposes **Ramp**, **LFO 1**, **LFO 2**, and **Sequencer** controls with stable parameter IDs. Their audio processing is pending.
 
 ## Quick start
 
@@ -46,11 +46,13 @@ The editor already exposes **A/B**, **Ramp**, **LFO 1**, **LFO 2**, and **Sequen
 - Play the **Root Note** to hear the selected rate. The default is MIDI note 60, shown as C4 in scientific pitch notation and C5 in FL Studio. In **Relative** key tracking, going up an octave doubles the rate. With **Key Tracking** set to **Absolute**, MIDI note 69 (A4) plays at 440 Hz by default, independent of the rate source.
 - Click **Load Sample…** or drag an audio file onto the editor. Dragging from the FL Studio browser is supported. Files up to 32 MB are embedded in the project. Larger files are stored by path.
 - Click a slice in the waveform to select it. Double-click to add a marker, drag its handle to move it, or right-click it to remove it. Open **Slices** and choose **Slice Evenly** or **Clear All Markers** to edit the whole sample.
+- Option-click (Alt-click on Windows) to hear a slice once through the output. Audition follows the playback window and direction and leaves the selected slice in place. When A and B use the same slice, Option-click a violet handle to audition B.
 - In **Slice** MIDI mode, notes select slices relative to your selection and **Slice Base Note**. The **Rate** tab controls how fast the slice retriggers.
 - Scroll over the waveform to zoom at the pointer. Pan with Shift and the mouse wheel, a horizontal trackpad gesture, or the scrollbar. Use **−** and **+** to zoom around the center, or click **Fit** to show the full sample.
 - Set **Sensitivity** and click **Transients** to analyze the entire sample in the background. Detected transients replace the existing slice markers, which you can then edit by hand. If the analysis finds no transients, it keeps the existing markers.
-- The rate display shows frequency in Hz, its BPM equivalent, and pitch in both scientific and FL Studio notation. The waveform shades the selected slice in the skin's accent color and marks the playing slice with a white line along its top edge.
-- In **Envelope**, drag A, D, or R horizontally to adjust the time, or S vertically to adjust the sustain level. Double-click a point to reset it. The graph highlights the active stage and shows the current envelope level while playing. Click a value below the graph to enter an exact setting.
+- The rate display shows frequency in Hz, its BPM equivalent, and pitch in both scientific and FL Studio notation. Drag the arrow or end handle of a waveform bracket to trim that edge. The opposite edge stays in place, and **Start Scan** and **Length** update in the matching panel. The arrow follows the playback direction, and the white rail marks the playing slice.
+- In **Cycling**, choose a pattern and a B slice to alternate with the current A slice. B has its own playback window, direction, interpolation, mono setting, pitch, fine tune, and pitch envelope. **Pitch Offset B** adds a musical interval to **Sample Pitch B**. The waveform shows A in the skin's accent color and B in violet. Both slice selectors start at 1 and follow the number of slices.
+- In **Amp**, drag A, D, or R horizontally to adjust the time, or S vertically to adjust sustain level. Double-click a point to reset it or click a value to type an exact setting. The output meter shows stereo peaks after Output Gain and oversampling. Click **CLIP** to clear a held 0 dBFS warning.
 - **LFO 1** and **LFO 2** show a waveform preview. Drag the phase marker to set the start phase. Choose a timing mode to see its relevant control. The LFO modulation engine is pending.
 
 ## Building from source

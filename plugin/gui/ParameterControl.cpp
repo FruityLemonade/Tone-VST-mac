@@ -1,6 +1,9 @@
 #include "ParameterControl.h"
 
 #include "HammerLookAndFeel.h"
+#include "SampleView.h"
+
+#include <utility>
 
 using namespace juce;
 
@@ -46,7 +49,50 @@ ParameterControl::ParameterControl (RangedAudioParameter& parameter, State& stat
     value->setTooltip (name + ". Drag to adjust or click the value to enter it.");
     value->setScrollWheelEnabled (false);
     addAndMakeVisible (*value);
-    valueAttachment = std::make_unique<State::SliderAttachment> (state, id, *value);
+    if (style != Style::slice)
+    {
+        valueAttachment = std::make_unique<State::SliderAttachment> (state, id, *value);
+        return;
+    }
+
+    onlySlice = std::make_unique<Label> (String(), "1");
+    onlySlice->setJustificationType (Justification::centred);
+    onlySlice->setColour (Label::backgroundColourId, hammer::recess);
+    onlySlice->setColour (Label::outlineColourId, hammer::edge);
+    onlySlice->setTitle (name);
+    addChildComponent (*onlySlice);
+    sliceAttachment = std::make_unique<ParameterAttachment> (parameter, [this] (float index)
+    {
+        storedSlice = roundToInt (index);
+        value->setValue (xt::wrapSliceIndex (storedSlice, sliceCount) + 1, dontSendNotification);
+    });
+    value->onDragStart = [this] { sliceGesture = true; sliceAttachment->beginGesture(); };
+    value->onDragEnd = [this] { if (std::exchange (sliceGesture, false)) sliceAttachment->endGesture(); };
+    value->onValueChange = [this]
+    {
+        if (sliceCount <= 1) return;
+        const auto index = (float) value->getValue() - 1.0f;
+        if (sliceGesture) sliceAttachment->setValueAsPartOfGesture (index);
+        else sliceAttachment->setValueAsCompleteGesture (index);
+    };
+    setSliceCount (1);
+    sliceAttachment->sendInitialUpdate();
+}
+
+ParameterControl::~ParameterControl()
+{
+    if (sliceGesture) sliceAttachment->endGesture();
+}
+
+void ParameterControl::setSliceCount (int count)
+{
+    if (sliceAttachment == nullptr || count == sliceCount) return;
+    sliceCount = count;
+    const bool multiple = count > 1;
+    if (multiple) value->setRange (1.0, (double) count, 1.0);
+    value->setValue (xt::wrapSliceIndex (storedSlice, count) + 1, dontSendNotification);
+    value->setVisible (multiple);
+    onlySlice->setVisible (! multiple);
 }
 
 void ParameterControl::resized()
@@ -68,5 +114,6 @@ void ParameterControl::resized()
         if (style == Style::knob) value->setTextBoxStyle (Slider::TextBoxBelow, false, jmin (92, r.getWidth()), 18);
         value->setBounds (r);
     }
+    if (onlySlice != nullptr) onlySlice->setBounds (r);
     if (choice != nullptr) choice->setBounds (r);
 }

@@ -56,11 +56,17 @@ struct EngineParams
     double sFine { 0.0 };
     double penvAmt { 0.0 };
     double penvDecayMs { 50.0 };
-    // A/B (M3)
+    // Cycling
     int abMode { 0 };
     int abSlice { 1 };
-    double abPitch { 0.0 };
+    double abPitch { 0.0 };     // additional semitone offset for B
     double abGainDb { 0.0 };
+    double abScan { 0.0 }, abLength { 1.0 };
+    bool abReverse { false };
+    int abInterp { 0 };
+    bool abMono { true };
+    double abSamplePitch { 0.0 }, abFine { 0.0 };
+    double abPenvAmt { 0.0 }, abPenvDecayMs { 50.0 };
     // Ramp (M4)
     bool rampOn { false };
     double rampStart { -2.0 };
@@ -129,6 +135,8 @@ struct Telemetry
     std::atomic<float> envelopeLevel { 0.0f };
     std::atomic<Adsr::Stage> envelopeStage { Adsr::Stage::Idle };
     std::atomic<float> playPos { -1.0f }; // fraction of the sample, -1 = none
+    std::atomic<float> auditionPos { -1.0f };
+    std::atomic<int> auditionSlice { -1 };
     std::atomic<bool> active { false };
     std::atomic<int> voices { 0 };
 };
@@ -153,6 +161,7 @@ public:
     void setParams (const EngineParams& p) noexcept { params = p; paramsDirty = true; }
     const EngineParams& getParams() const noexcept { return params; }
     void setHostInfo (const HostInfo& h) noexcept;
+    void auditionSlice (int index, bool useB = false) noexcept;
 
     /// Renders n samples (overwrites l / r). Events must be sorted by offset.
     void process (float* l, float* r, int n, const MidiEvent* events, int numEvents) noexcept;
@@ -183,6 +192,8 @@ private:
     void updateSnapOffset() noexcept;
     void configureLanes() noexcept;
     void fireHit (int laneIndex, double subOffset, double periodSamples) noexcept;
+    HitStart makeHit (int slice, bool useB) const noexcept;
+    bool nextHitUsesB (int laneIndex) noexcept;
     int currentSlice() const noexcept;
     double noteRef() const noexcept;
 
@@ -207,7 +218,7 @@ private:
     double paramStTarget { 0.0 };
     double srcHz { 1.0 };
     double snapOffset { 0.0 };
-    OnePole paramSm, bendSm, sPitchSm, velSm, driveSm, outSm;
+    OnePole paramSm, bendSm, sPitchSm, bPitchSm, velSm, driveSm, outSm;
     double glideNote { 60.0 };
     double glideCoef { 1.0 };
     double lastRateHz { 0.0 };
@@ -221,6 +232,12 @@ private:
     int configuredLanes { -1 };
     double configuredDetune { -1.0 }, configuredSpread { -1.0 };
     Random rng { 0xC0FFEEull };
+    Random cyclingRandom { 0xB7C13ull };
+    unsigned cyclingTicks[kMaxLanes] {};
+    int cyclingMode { 0 };
+    double cyclingPitchRatio { 1.0 };
+    float cyclingGain { 1.0f };
+    HitVoice audition;
 
     // host
     HostInfo host;

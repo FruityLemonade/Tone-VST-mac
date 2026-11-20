@@ -22,6 +22,8 @@ struct HitStart
     float gain { 1.0f };
     Interp interp { Interp::Hermite };
     bool mono { true };
+    int sliceIndex { 0 };
+    bool usesSliceB { false };
 };
 
 /// Plays one hit of a sample window.
@@ -40,6 +42,8 @@ public:
     bool isReleasing() const noexcept { return active && fadingOut; }
     uint64_t getStamp() const noexcept { return stamp; }
     double getPosition() const noexcept { return pos; }
+    int getSliceIndex() const noexcept { return p.sliceIndex; }
+    bool usesSliceB() const noexcept { return p.usesSliceB; }
 
     /// Renders one sample, accumulates into l/r. `pitchMul` = global sample-pitch factor.
     void render (const SampleView& s, double pitchMul, float& l, float& r) noexcept;

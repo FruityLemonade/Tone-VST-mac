@@ -12,8 +12,21 @@
 
 using namespace juce;
 
+namespace
+{
+struct WindowParameterIds { const char* scan; const char* length; const char* reverse; };
+
+WindowParameterIds windowParameters (bool sliceB)
+{
+    return sliceB ? WindowParameterIds { "ab_scan", "ab_length", "ab_reverse" }
+                  : WindowParameterIds { "scan", "length", "reverse" };
+}
+}
+
 WaveformView::WaveformView (XtoneProcessor& p) : proc (p)
 {
+    setTitle ("Sample waveform");
+    setTooltip ("Drag either playback handle to trim the slice. Click to select, Option-click or Alt-click to audition, or double-click to add a slice marker.");
     sensitivity.setRange (0, 100, 1);
     sensitivity.setValue (50, dontSendNotification);
     sensitivity.setTextValueSuffix (" %");
@@ -66,6 +79,7 @@ WaveformView::WaveformView (XtoneProcessor& p) : proc (p)
 
 WaveformView::~WaveformView()
 {
+    finishTrim();
     if (sliceMenuOpen) PopupMenu::dismissAllActiveMenus();
     scrollbar.removeListener (this);
 }
@@ -165,10 +179,12 @@ void WaveformView::updateAsset()
     auto current = proc.getCurrentAsset();
     if (current == asset) return;
 
+    finishTrim();
     const auto previousAudio = asset != nullptr ? asset->audio : nullptr;
     asset = std::move (current);
     dragIndex = -1;
     selectOnRelease = false;
+    auditionOnRelease = false;
     if (asset == nullptr || asset->audio != previousAudio)
     {
         detectionMessage.clear();
@@ -356,39 +372,35 @@ void WaveformView::paint (Graphics& g)
 
     const auto& markers = dragIndex >= 0 ? dragSlices.getMarkers() : asset->slices.getMarkers();
     const int numSlices = (int) markers.size() + 1;
-    const int selected = plotState.selectedSlice % numSlices;
+    const int selected = xt::wrapSliceIndex (plotState.selectedSlice, numSlices);
+    const bool cycling = plotState.cyclingSlice >= 0;
+    const int sliceB = xt::wrapSliceIndex (plotState.cyclingSlice, numSlices);
+    const auto colourB = Colour (0xffc4a2ff);
+    const auto auditionColour = Colour (0xff8cdbf4);
     const int playing = plotState.playingSlice;
     const bool isPlaying = isPositiveAndBelow (playing, numSlices);
-    const int scanSlice = isPlaying ? playing : selected;
     const auto frames = (double) asset->audio->frames();
-    const auto startOf = [&] (int i) { return i == 0 ? 0.0 : (double) markers[(size_t) i - 1]; };
-    const auto endOf = [&] (int i) { return i == numSlices - 1 ? frames : (double) markers[(size_t) i]; };
-    const double sliceStart = startOf (scanSlice), sliceEnd = endOf (scanSlice);
     const auto xInPlot = [this, w] (double frame) { return jlimit ((float) w.getX(), (float) w.getRight(), frameToX (frame)); };
-
-    if (numSlices > 1)
+    const auto shade = [&] (int index, Colour colour)
     {
-        const float x0 = xInPlot (startOf (selected)), x1 = xInPlot (endOf (selected));
-        g.setColour (accent.withAlpha (0.15f));
+        const auto slice = sliceBounds (index);
+        const auto x0 = xInPlot (slice.start), x1 = xInPlot (slice.end);
+        g.setColour (colour.withAlpha (0.16f));
         g.fillRect (x0, (float) w.getY(), x1 - x0, (float) w.getHeight());
-        if (isPlaying)
-        {
-            const float activeLeft = xInPlot (startOf (playing)), activeRight = xInPlot (endOf (playing));
-            g.setColour (hammer::text.withAlpha (0.85f));
-            g.fillRect (activeLeft, (float) w.getY() + 1.0f, activeRight - activeLeft, 2.0f);
-        }
+    };
+    if (numSlices > 1) shade (selected, accent);
+    if (cycling) shade (sliceB, colourB);
+    if (isPlaying)
+    {
+        const auto slice = sliceBounds (playing);
+        const float x0 = xInPlot (slice.start), x1 = xInPlot (slice.end);
+        g.setColour (hammer::text.withAlpha (0.9f));
+        g.fillRect (x0, (float) w.getY() + 2.0f, x1 - x0, 2.0f);
     }
 
     g.setColour (hammer::edge.withAlpha (0.5f));
     for (int i = 1; i <= 3; ++i)
         g.drawHorizontalLine (w.getY() + i * w.getHeight() / 4, (float) w.getX(), (float) w.getRight());
-
-    const double scan = plotState.scan * 0.01;
-    const double length = plotState.length * 0.01 * (sliceEnd - sliceStart);
-    const double windowStart = sliceStart + scan * (sliceEnd - sliceStart - length);
-    const float sx0 = xInPlot (windowStart), sx1 = xInPlot (windowStart + length);
-    g.setColour (accent.withAlpha (0.35f));
-    g.fillRect (sx0, (float) w.getBottom() - 4.0f, sx1 - sx0, 3.0f);
 
     paintSignal (g, w);
 
@@ -409,23 +421,79 @@ void WaveformView::paint (Graphics& g)
             g.drawVerticalLine (roundToInt (x) + offset, handle.getY() + 4.0f, handle.getBottom() - 4.0f);
     }
 
-    const double position = plotState.position * frames;
-    if (position >= visibleStart && position < visibleEnd)
+    const auto drawWindow = [&] (bool isB, Colour colour)
     {
-        g.setColour (hammer::text);
-        const float x = frameToX (position);
-        g.drawLine (x, (float) w.getY(), x, (float) w.getBottom(), 1.0f);
-    }
+        const auto window = playbackWindow (isB);
+        if (window.end <= visibleStart || window.start >= visibleEnd) return;
+        const bool reverse = (isB ? plotState.windowB : plotState.windowA).reverse;
+        const float y = windowRailY (isB);
+        const float left = xInPlot (window.start), right = xInPlot (window.end);
+        g.setColour (colour.withAlpha (0.1f));
+        g.fillRect (left, (float) w.getY(), right - left, y - (float) w.getY());
+        g.setColour (hammer::ink.withAlpha (0.94f));
+        g.fillRect (left, y - 3.5f, right - left, 7.0f);
+        g.setColour (colour);
+        g.fillRect (left, y - 1.75f, right - left, 3.5f);
 
-    String sliceText = "SLICE " + String (selected + 1) + "/" + String (numSlices);
-    const bool showPlaying = isPlaying && playing != selected;
-    if (showPlaying) sliceText << "  /  PLAY " << playing + 1;
-    const auto sliceReadout = w.reduced (8).removeFromTop (19).removeFromRight (showPlaying ? 190 : 115);
-    g.setColour (hammer::recess.withAlpha (0.88f));
-    g.fillRoundedRectangle (sliceReadout.toFloat(), 3.0f);
-    g.setColour (accent);
+        const auto edge = [&] (double frame, bool start)
+        {
+            const auto bounds = trimHandleBounds ({ isB, start }, frame);
+            if (bounds.isEmpty()) return;
+            const auto centre = bounds.getCentre();
+            const bool activeHandle = trimDrag && trimDrag->handle.sliceB == isB && trimDrag->handle.startsPlayback == start;
+            const auto handleColour = activeHandle ? hammer::text : colour;
+            g.setColour (handleColour);
+            g.drawLine (centre.x, y, centre.x, centre.y, 2.0f);
+            g.setColour (hammer::ink);
+            g.fillRoundedRectangle (bounds.reduced (1.0f, 0.5f), 2.5f);
+            g.setColour (handleColour);
+            if (start)
+            {
+                const float direction = reverse ? -1.0f : 1.0f;
+                Path arrow;
+                const float back = centre.x - direction * 3.0f;
+                arrow.addTriangle (back, centre.y - 3.5f, centre.x + direction * 4.0f, centre.y, back, centre.y + 3.5f);
+                g.fillPath (arrow);
+            }
+            else
+            {
+                g.fillRoundedRectangle (Rectangle<float> (4.0f, 7.0f).withCentre (centre), 1.0f);
+            }
+        };
+        edge (window.start, ! reverse);
+        edge (window.end, reverse);
+    };
+    drawWindow (false, accent);
+    if (cycling) drawWindow (true, colourB);
+
+    const auto playhead = [&] (float progress, Colour colour, bool dashed)
+    {
+        const double position = progress * frames;
+        if (position < visibleStart || position >= visibleEnd) return;
+        const float x = frameToX (position);
+        const Line<float> line (x, (float) w.getY(), x, (float) w.getBottom());
+        g.setColour (colour);
+        if (dashed) g.drawDashedLine (line, dashes, 2, 1.5f);
+        else g.drawLine (line, 1.0f);
+    };
+    playhead (plotState.position, hammer::text, false);
+    playhead (plotState.auditionPosition, auditionColour, true);
+
+    auto readouts = w.reduced (8).removeFromTop (19);
     g.setFont (hammer::mono (12.0f, Font::bold));
-    g.drawText (sliceText, sliceReadout, Justification::centred);
+    const auto badge = [&] (const String& text, Colour colour, int width)
+    {
+        const auto bounds = readouts.removeFromRight (width);
+        readouts.removeFromRight (4);
+        g.setColour (hammer::recess.withAlpha (0.94f));
+        g.fillRoundedRectangle (bounds.toFloat(), 3.0f);
+        g.setColour (colour);
+        g.drawText (text, bounds, Justification::centred);
+    };
+    if (plotState.auditionSlice >= 0) badge ("AUD " + String (plotState.auditionSlice + 1), auditionColour, 66);
+    if (isPlaying && (cycling || playing != selected)) badge ("PLAY " + String (playing + 1), hammer::text, 67);
+    if (cycling) badge ("B " + String (sliceB + 1), colourB, 54);
+    badge ((cycling ? "A " : "SLICE ") + String (selected + 1) + "/" + String (numSlices), accent, cycling ? 85 : 110);
 }
 
 int WaveformView::markerAt (float x) const
@@ -438,22 +506,157 @@ int WaveformView::markerAt (float x) const
     return marker >= visibleStart && marker < visibleStart + visibleLength && std::abs (marker - frame) <= tolerance ? index : -1;
 }
 
+int WaveformView::sliceAt (float x) const
+{
+    const auto& markers = asset->slices.getMarkers();
+    const auto frame = (int64_t) std::floor (xToFrame (x));
+    return (int) std::distance (markers.begin(), std::upper_bound (markers.begin(), markers.end(), frame));
+}
+
+int WaveformView::windowSlice (bool sliceB) const
+{
+    return xt::wrapSliceIndex (sliceB ? plotState.cyclingSlice : plotState.selectedSlice, asset->slices.numSlices());
+}
+
+xt::SliceWindow WaveformView::sliceBounds (int index) const
+{
+    const auto& markers = dragIndex >= 0 ? dragSlices.getMarkers() : asset->slices.getMarkers();
+    const auto i = (size_t) index;
+    const auto start = i == 0 ? 0.0 : (double) markers[i - 1];
+    const auto end = i == markers.size() ? (double) asset->audio->frames() : (double) markers[i];
+    return { start, end };
+}
+
+xt::SliceWindow WaveformView::playbackWindow (bool sliceB) const
+{
+    const auto source = sliceBounds (windowSlice (sliceB));
+    const auto& settings = sliceB ? plotState.windowB : plotState.windowA;
+    return xt::sliceWindow (source.start, source.end, settings.scan * 0.01, settings.length * 0.01);
+}
+
+float WaveformView::windowRailY (bool sliceB) const
+{
+    return (float) waveArea().getBottom() - (sliceB ? 52.0f : 28.0f);
+}
+
+Rectangle<float> WaveformView::trimHandleBounds (const TrimHandle& handle, double frame) const
+{
+    const auto w = waveArea();
+    if (frame < visibleStart || frame > visibleStart + visibleLength || w.getWidth() < 14) return {};
+    const auto x = jlimit ((float) w.getX() + 7.0f, (float) w.getRight() - 7.0f, frameToX (frame));
+    const auto y = windowRailY (handle.sliceB) + (handle.startsPlayback ? -7.0f : 4.0f);
+    return Rectangle<float> (14.0f, 11.0f).withCentre ({ x, y });
+}
+
+std::optional<WaveformView::TrimHandle> WaveformView::trimHandleAt (Point<float> point) const
+{
+    std::optional<TrimHandle> nearest;
+    float distance = 12.0f;
+    for (const bool sliceB : { false, true })
+    {
+        if (sliceB && plotState.cyclingSlice < 0) break;
+        const auto window = playbackWindow (sliceB);
+        const bool reverse = (sliceB ? plotState.windowB : plotState.windowA).reverse;
+        for (const bool start : { true, false })
+        {
+            const TrimHandle handle { sliceB, start };
+            const auto bounds = trimHandleBounds (handle, start != reverse ? window.start : window.end);
+            if (! bounds.isEmpty() && bounds.expanded (1.0f, 1.0f).contains (point))
+            {
+                const auto next = bounds.getCentre().getDistanceFrom (point);
+                if (next < distance)
+                {
+                    nearest = handle;
+                    distance = next;
+                }
+            }
+        }
+    }
+    return nearest;
+}
+
+void WaveformView::dragTrim (float x)
+{
+    auto& drag = *trimDrag;
+    const auto dx = x - drag.anchorX;
+    if (! drag.gestureStarted && std::abs (dx) < 2.0f) return;
+
+    const double span = drag.slice.end - drag.slice.start;
+    const double minimumLength = jmax (1.0, span * 0.01);
+    const double delta = dx * drag.framesPerPixel;
+    auto window = drag.initialWindow;
+    if (drag.leftEdge)
+        window.start = jlimit (drag.slice.start, jmax (drag.slice.start, window.end - minimumLength), window.start + delta);
+    else
+        window.end = jlimit (jmin (drag.slice.end, window.start + minimumLength), drag.slice.end, window.end + delta);
+
+    const double length = window.end - window.start;
+    const auto scanValue = span - length > 1.0e-9 ? (float) (100.0 * (window.start - drag.slice.start) / (span - length))
+                                                : drag.initialScan;
+    const auto lengthValue = (float) (100.0 * length / span);
+
+    const auto ids = windowParameters (drag.handle.sliceB);
+    auto& scan = *proc.apvts.getParameter (ids.scan);
+    auto& size = *proc.apvts.getParameter (ids.length);
+    if (! drag.gestureStarted)
+    {
+        drag.gestureStarted = true;
+        scan.beginChangeGesture();
+        size.beginChangeGesture();
+    }
+    const auto set = [] (RangedAudioParameter& parameter, float value)
+    {
+        const auto next = parameter.convertTo0to1 (value);
+        if (! approximatelyEqual (next, parameter.getValue())) parameter.setValueNotifyingHost (next);
+    };
+    set (scan, scanValue);
+    set (size, lengthValue);
+    updatePlotState();
+}
+
+void WaveformView::finishTrim()
+{
+    const auto drag = std::exchange (trimDrag, std::nullopt);
+    if (! drag || ! drag->gestureStarted) return;
+    const auto ids = windowParameters (drag->handle.sliceB);
+    proc.apvts.getParameter (ids.scan)->endChangeGesture();
+    proc.apvts.getParameter (ids.length)->endChangeGesture();
+}
+
 void WaveformView::mouseMove (const MouseEvent& e)
 {
-    if (visibleLength <= 0.0 || ! waveArea().contains (e.getPosition()) || asset->slices.getMarkers().empty())
+    if (visibleLength <= 0.0 || ! waveArea().contains (e.getPosition()))
     {
         setMouseCursor (MouseCursor::NormalCursor);
         return;
     }
-    setMouseCursor (markerAt (e.position.x) >= 0 ? MouseCursor::LeftRightResizeCursor : MouseCursor::PointingHandCursor);
+    const bool resizable = ! e.mods.isAltDown() && (trimHandleAt (e.position).has_value() || markerAt (e.position.x) >= 0);
+    setMouseCursor (resizable ? MouseCursor::LeftRightResizeCursor : MouseCursor::PointingHandCursor);
 }
 
 void WaveformView::mouseDown (const MouseEvent& e)
 {
     updateAsset();
+    finishTrim();
     selectOnRelease = false;
+    auditionOnRelease = false;
     if (visibleLength <= 0.0 || ! waveArea().contains (e.getPosition())) return;
     selectOnRelease = e.mods.isLeftButtonDown() && ! e.mods.isPopupMenu();
+    auditionOnRelease = selectOnRelease && e.mods.isAltDown();
+    if (auditionOnRelease) return;
+    updatePlotState();
+    if (selectOnRelease)
+    {
+        if (const auto handle = trimHandleAt (e.position))
+        {
+            const auto& settings = handle->sliceB ? plotState.windowB : plotState.windowA;
+            trimDrag = TrimDrag { *handle, sliceBounds (windowSlice (handle->sliceB)), playbackWindow (handle->sliceB),
+                                  visibleLength / waveArea().getWidth(), e.position.x, settings.scan,
+                                  handle->startsPlayback != settings.reverse };
+            repaint (waveArea());
+            return;
+        }
+    }
     const int index = markerAt (e.position.x);
     if (index < 0) return;
     if (e.mods.isPopupMenu())
@@ -472,6 +675,11 @@ void WaveformView::mouseDown (const MouseEvent& e)
 void WaveformView::mouseDrag (const MouseEvent& e)
 {
     updateAsset();
+    if (trimDrag)
+    {
+        dragTrim (e.position.x);
+        return;
+    }
     if (dragIndex < 0) return;
     dragSlices.move (dragIndex, std::llround (xToFrame (e.position.x)));
     repaint();
@@ -482,6 +690,29 @@ void WaveformView::mouseUp (const MouseEvent& e)
     updateAsset();
     const bool select = std::exchange (selectOnRelease, false) && waveArea().contains (e.getPosition())
                      && ! e.mouseWasDraggedSinceMouseDown() && e.getNumberOfClicks() == 1;
+    if (std::exchange (auditionOnRelease, false))
+    {
+        if (select)
+        {
+            updatePlotState();
+            if (const auto handle = trimHandleAt (e.position))
+                proc.auditionSlice (*asset, windowSlice (handle->sliceB), handle->sliceB);
+            else
+            {
+                const int index = sliceAt (e.position.x);
+                const bool useB = plotState.cyclingSlice >= 0 && index != windowSlice (false) && index == windowSlice (true);
+                proc.auditionSlice (*asset, index, useB);
+            }
+        }
+        return;
+    }
+    if (trimDrag)
+    {
+        if (select && ! trimDrag->gestureStarted) selectSlice (windowSlice (trimDrag->handle.sliceB));
+        finishTrim();
+        repaint (waveArea());
+        return;
+    }
     if (const int marker = std::exchange (dragIndex, -1); marker >= 0)
     {
         if (dragSlices.getMarkers() != asset->slices.getMarkers())
@@ -492,9 +723,7 @@ void WaveformView::mouseUp (const MouseEvent& e)
     }
     else if (select)
     {
-        const auto& markers = asset->slices.getMarkers();
-        const auto frame = (int64_t) std::floor (xToFrame (e.position.x));
-        selectSlice ((int) std::distance (markers.begin(), std::upper_bound (markers.begin(), markers.end(), frame)));
+        selectSlice (sliceAt (e.position.x));
     }
 }
 
@@ -513,7 +742,7 @@ void WaveformView::selectSlice (int index)
 void WaveformView::mouseDoubleClick (const MouseEvent& e)
 {
     updateAsset();
-    if (visibleLength <= 0.0 || e.mods.isPopupMenu() || ! waveArea().contains (e.getPosition())) return;
+    if (visibleLength <= 0.0 || e.mods.isPopupMenu() || e.mods.isAltDown() || ! waveArea().contains (e.getPosition())) return;
     auto slices = asset->slices;
     if (slices.add (std::llround (xToFrame (e.position.x)))) proc.setMarkers (*asset, slices.getMarkers());
 }
@@ -522,7 +751,7 @@ void WaveformView::mouseWheelMove (const MouseEvent& e, const MouseWheelDetails&
 {
     updateAsset();
     const auto w = waveArea();
-    if (visibleLength <= 0.0 || dragIndex >= 0 || ! w.contains (e.getPosition())) return;
+    if (visibleLength <= 0.0 || dragIndex >= 0 || trimDrag || ! w.contains (e.getPosition())) return;
     if (e.mods.isShiftDown() || std::abs (wheel.deltaX) > std::abs (wheel.deltaY))
     {
         const double delta = wheel.deltaX != 0.0f ? wheel.deltaX : wheel.deltaY;
@@ -539,14 +768,27 @@ void WaveformView::timerCallback()
 {
     updateAsset();
     updateStatus();
+    updatePlotState();
+}
+
+void WaveformView::updatePlotState()
+{
     const auto& telemetry = proc.telemetry();
     const auto raw = [this] (const char* id) { return proc.apvts.getRawParameterValue (id)->load(); };
+    const auto window = [&raw] (bool isB)
+    {
+        const auto ids = windowParameters (isB);
+        return WindowSettings { raw (ids.scan), raw (ids.length), raw (ids.reverse) != 0.0f };
+    };
     const auto active = telemetry.active.load();
-    const PlotState next { active ? telemetry.playPos.load() : -1.0f, raw ("scan"), raw ("length"),
-                           (int) raw ("slice"), active ? telemetry.slice.load() : -1 };
+    const PlotState next { active ? telemetry.playPos.load() : -1.0f, telemetry.auditionPos.load(), window (false), window (true),
+                           (int) raw ("slice"), raw ("ab_mode") != 0.0f ? (int) raw ("ab_slice") : -1,
+                           active ? telemetry.slice.load() : -1, telemetry.auditionSlice.load() };
     if (next.selectedSlice != plotState.selectedSlice || next.playingSlice != plotState.playingSlice
-        || ! approximatelyEqual (next.position, plotState.position)
-        || ! approximatelyEqual (next.scan, plotState.scan) || ! approximatelyEqual (next.length, plotState.length))
+        || next.cyclingSlice != plotState.cyclingSlice || next.auditionSlice != plotState.auditionSlice
+        || next.windowA != plotState.windowA || next.windowB != plotState.windowB
+        || ! approximatelyEqual (next.auditionPosition, plotState.auditionPosition)
+        || ! approximatelyEqual (next.position, plotState.position))
     {
         plotState = next;
         repaint (waveArea());

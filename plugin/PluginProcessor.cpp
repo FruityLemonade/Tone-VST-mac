@@ -24,7 +24,24 @@ void writeSavedState (MemoryBlock& dest, const ValueTree& state)
     out.write (kStateMagic, kStateMagicSize);
     state.writeToStream (out);
 }
-constexpr int kStateVersion = 1;
+constexpr int kStateVersion = 2;
+
+void copyLegacyPlaybackToB (ValueTree& params)
+{
+    constexpr const char* ids[][2] {
+        { "scan", "ab_scan" }, { "length", "ab_length" }, { "reverse", "ab_reverse" },
+        { "interp", "ab_interp" }, { "mono", "ab_mono" }, { "s_pitch", "ab_sample_pitch" },
+        { "s_fine", "ab_fine" }, { "penv_amt", "ab_penv_amt" }, { "penv_decay", "ab_penv_decay" }
+    };
+    for (const auto& pair : ids)
+    {
+        const auto source = params.getChildWithProperty ("id", pair[0]);
+        if (! source.isValid() || params.getChildWithProperty ("id", pair[1]).isValid()) continue;
+        auto copy = source.createCopy();
+        copy.setProperty ("id", pair[1], nullptr);
+        params.appendChild (copy, nullptr);
+    }
+}
 } // namespace
 
 XtoneProcessor::XtoneProcessor()
@@ -144,6 +161,10 @@ void XtoneProcessor::processBlock (AudioBuffer<float>& buffer, MidiBuffer& midi)
 
         snapshot.read (engineParams);
         engine.setParams (engineParams);
+        auto request = auditionRequest.load (std::memory_order_acquire);
+        if (request != 0 && audioAsset != nullptr && (uint32_t) (request >> 32) == audioAsset->publicationId
+            && auditionRequest.compare_exchange_strong (request, 0, std::memory_order_acq_rel))
+            engine.auditionSlice ((int) ((uint32_t) request >> 1) - 1, (request & 1u) != 0);
         xt::HostInfo hi = hostInfo;
         if (hi.valid) hi.ppq += (double) pos / hostRate * hi.bpm / 60.0;
         engine.setHostInfo (hi);
@@ -192,8 +213,15 @@ void XtoneProcessor::processBlock (AudioBuffer<float>& buffer, MidiBuffer& midi)
     for (int c = 0; c < 2; ++c)
     {
         float* d = buffer.getWritePointer (c);
+        float peak = 0.0f;
         for (int i = 0; i < numSamples; ++i)
-            if (! std::isfinite (d[i])) d[i] = 0.0f;
+        {
+            if (std::isfinite (d[i])) peak = std::max (peak, std::abs (d[i]));
+            else d[i] = 0.0f;
+        }
+        auto held = outputPeaks[c].load (std::memory_order_relaxed);
+        while (peak > held && ! outputPeaks[c].compare_exchange_weak (held, peak, std::memory_order_relaxed)) {}
+        if (peak >= 1.0f) outputClipped.store (true, std::memory_order_relaxed);
     }
 }
 
@@ -206,13 +234,22 @@ bool XtoneProcessor::publish (xtp::SampleAsset::Ptr asset, const xtp::SampleAsse
     {
         const ScopedLock sl (guiLock);
         if (expected != nullptr && guiAsset.get() != expected) return false;
+        auditionRequest.store (0, std::memory_order_release);
+        asset->publicationId = (uint32_t) ++assetVersion;
         guiAsset = asset;
         asset->incReferenceCount();
         displaced = pending.exchange (asset.get(), std::memory_order_acq_rel);
-        ++assetVersion;
     }
     if (displaced != nullptr) displaced->decReferenceCount(); // never reached the audio thread
     return true;
+}
+
+void XtoneProcessor::auditionSlice (const xtp::SampleAsset& asset, int index, bool useB)
+{
+    const ScopedLock sl (guiLock);
+    if (guiAsset.get() != &asset || ! isPositiveAndBelow (index, asset.slices.numSlices())) return;
+    const auto request = ((uint64_t) asset.publicationId << 32) | ((uint32_t) (index + 1) << 1) | (useB ? 1u : 0u);
+    auditionRequest.store (request, std::memory_order_release);
 }
 
 void XtoneProcessor::timerCallback()
@@ -341,10 +378,15 @@ void XtoneProcessor::getStateInformation (MemoryBlock& dest)
 void XtoneProcessor::restoreState (const ValueTree& root)
 {
     if (! root.hasType ("XTONE_STATE")) return;
-    // stateVersion 1: no migrations yet
-
     if (auto params = root.getChildWithName (apvts.state.getType()); params.isValid())
+    {
+        if ((int) root.getProperty ("stateVersion", 1) < 2)
+        {
+            params = params.createCopy();
+            copyLegacyPlaybackToB (params);
+        }
         apvts.replaceState (params);
+    }
 
     String error;
     auto asset = xtp::loader::fromStateTree (root.getChildWithName ("SAMPLE"), error);
