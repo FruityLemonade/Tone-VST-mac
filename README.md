@@ -8,7 +8,7 @@ See the [technical specification](docs/HANDOFF.md) and [design decisions](docs/D
 
 ## Installation on Windows
 
-1. Open the latest successful [Windows build](https://github.com/FruityLemonade/Tone-VST-mac/releases/tag/v0.15) and download the **XTONE-win64** artifact.
+1. Open the latest successful [Windows build](https://github.com/FruityLemonade/Tone-VST-mac/releases/latest) and download the **XTONE-win64** artifact.
 2. Extract the ZIP and copy the `XTONE.vst3` folder to `C:\Program Files\Common Files\VST3\`.
 3. In FL Studio, open *Options → Manage plugins* and click *Find installed plugins*. Mark XTONE as a favorite and add it to the Channel Rack.
 4. To update, close FL Studio, replace the existing `XTONE.vst3` folder, and restart FL Studio.
@@ -19,7 +19,7 @@ To run XTONE outside a DAW, open `XTONE.exe` and select your MIDI input in **Aud
 
 The universal build includes `XTONE.component` (Audio Unit), `XTONE.vst3`, and `XTONE.app`. It supports Intel and Apple Silicon Macs running macOS 11 or later.
 
-Download the [latest package](https://github.com/FruityLemonade/Tone-VST-mac/releases/tag/v0.15) Extract the ZIP if you have a prebuilt bundle, or [build XTONE from source](#building-from-source). Create the plug-in folders if needed.
+Download the [latest release](https://github.com/FruityLemonade/Tone-VST-mac/releases/latest). Extract the ZIP if you have a prebuilt bundle, or [build XTONE from source](#building-from-source). Create the plug-in folders if needed.
 
 - For **Logic Pro**, copy `XTONE.component` to `~/Library/Audio/Plug-Ins/Components/` and launch Logic Pro. On a software instrument track, select *AU Instruments → XTONE Dev → XTONE → Stereo*. If XTONE is missing, rescan it in the Plug-in Manager.
 - For **FL Studio**, copy `XTONE.vst3` to `~/Library/Audio/Plug-Ins/VST3/`. Open *Options → Manage plugins*, click *Find installed plugins*, and add XTONE as an instrument.
